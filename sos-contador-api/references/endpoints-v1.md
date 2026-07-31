@@ -233,7 +233,7 @@ Observed minimal web-session body for `venta create`:
 
 These are internal web endpoints used only when the public API does not cover the capability. Current v1 fallback scope includes cobranza date-range listing, receipt detail fallback, detailed cobro create, receipt association, and sale create.
 
-In this skill, `web-session` means direct HTTP login plus cookies. It does not mean browser automation and it must not trigger Playwright for standard receipt queries.
+In this skill, `web-session` means direct HTTP login plus cookies. It does not mean browser automation and it must not trigger a browser automation framework for standard receipt queries.
 
 - `POST /back/login.asp`
 - `GET /back/cambiar_cuit.asp?nuevocuit=:idcuit`

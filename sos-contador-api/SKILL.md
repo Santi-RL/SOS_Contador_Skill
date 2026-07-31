@@ -51,7 +51,7 @@ Leer [references/public-api.md](references/public-api.md) antes de usar una oper
 
 ## Reglas de seguridad
 
-- No usar Playwright, perfiles de navegador, cookies existentes ni toma de sesión para tareas normales.
+- No usar automatización de navegador, perfiles de navegador, cookies existentes ni toma de sesión para tareas normales.
 - Usar la API pública primero. Tratar `web-session` como fallback HTTP interno y frágil.
 - No cambiar automáticamente a `web-session` cuando falle una operación que debería funcionar por API. Diagnosticar primero y pedir permiso antes del fallback.
 - No anular, cancelar, eliminar ni dar de baja un comprobante salvo pedido explícito para ese comprobante y mecanismo previamente validado.

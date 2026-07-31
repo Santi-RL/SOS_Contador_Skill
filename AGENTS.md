@@ -20,9 +20,9 @@ Examples that must route to the local SOS skill first:
 
 ## Browser Rule
 
-Do not use Playwright, browser-profile inspection, cookie reuse, or browser-session takeover for standard SOS Contador data tasks.
+Do not use browser automation, browser-profile inspection, cookie reuse, or browser-session takeover for standard SOS Contador data tasks.
 
-Use Playwright only when:
+Use browser automation only when:
 
 - the user explicitly asks to debug the SOS web UI itself, or
 - the local SOS skill explicitly indicates that both the public API and the direct HTTP `web-session` fallback are insufficient for the requested task.
@@ -131,10 +131,17 @@ If a draft preview merges multiple independent orders into one recibo, stop that
 - Keep this file generic and portable; do not add machine-specific paths or user-specific secrets.
 - Keep real-world examples out of public skill files; use `<SOS_CONTADOR_HOME>/local/` for anything concrete from local client work.
 
-## Code Review And Security Tools
+## Agent Compatibility
 
-- Use `security-best-practices` for explicit security review and whenever changes touch authentication, `.env` loading, API sessions, CUIT-scoped data, local exports, PDF handling, or public skill portability.
-- Use `autoreview` as closeout for non-trivial code or skill changes after focused tests/manual checks. Treat findings as advisory and verify each one against the real code path before editing.
-- If `autoreview` requires approval because it will send an isolated code bundle to an external reviewer, explicitly request the user's authorization. Do not skip, replace, or downgrade `autoreview` solely because that approval is required; if authorization is denied, report the review as incomplete.
-- Use `clawpatch` only for deliberate repo maintenance audits or when the user asks for a findings backlog. Start with `clawpatch status`, `clawpatch map`, `clawpatch review --limit <n>` and `clawpatch report`; `clawpatch fix --finding <id>` requires a clean worktree and explicit confirmation.
-- Do not run these tools for ordinary SOS data queries, local exports, or docs-only edits unless review is requested.
+- Keep the core workflow independent of any specific AI agent, vendor, plugin, named reviewer, browser framework, or local development utility.
+- Express requirements in terms of capabilities and outcomes, such as running tests, reviewing security-sensitive changes, requesting approval before sharing code externally, and verifying writes with an independent read.
+- Keep optional platform integrations isolated in dedicated adapter files. Their absence must not prevent use of the CLI or the instructions in `SKILL.md`.
+
+## Development And Release Quality
+
+- Run focused automated tests and relevant manual checks for non-trivial code or skill changes.
+- Review changes that affect authentication, environment loading, API sessions, CUIT-scoped data, local exports, document handling, or public portability with additional security care.
+- Treat automated or independent review findings as advisory and verify each finding against the real code path before editing.
+- Obtain explicit authorization before sending source code, artifacts, or data to an external review service.
+- Use repository-wide maintenance audits only for deliberate maintenance work or when a findings backlog is requested.
+- Do not require development-review tooling for ordinary SOS data queries, local exports, or documentation-only usage.
