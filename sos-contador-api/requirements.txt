@@ -1,0 +1,9 @@
+pypdf
+Pillow
+pytesseract
+openpyxl
+xlrd
+xlwt
+pymupdf
+pytest
+certifi

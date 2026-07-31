@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.sos-contador/cobro-create-and-associate.schema.json",
+  "title": "SOS Contador - Cobro Create And Associate Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contexto",
+    "operacion"
+  ],
+  "properties": {
+    "contexto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cuit_trabajo"
+      ],
+      "properties": {
+        "cuit_trabajo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cuit"
+          ],
+          "properties": {
+            "cuit": {
+              "type": "string",
+              "pattern": "^[0-9]{11}$",
+              "description": "CUIT del contribuyente donde se va a cargar el comprobante. Nunca es el CUIT del cliente."
+            },
+            "nombre": {
+              "type": "string",
+              "description": "Razon social del CUIT de trabajo."
+            },
+            "alias": {
+              "type": "string",
+              "description": "Alias informal del CUIT de trabajo, por ejemplo 'empresa demo'."
+            }
+          }
+        },
+        "periodo_visual": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Periodo visible esperado en la web, por ejemplo 2026-03."
+        },
+        "modo_prueba": {
+          "type": "boolean",
+          "description": "True si el comprobante es de sandbox o prueba."
+        }
+      }
+    },
+    "operacion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tipo",
+        "fecha",
+        "cliente",
+        "recibo"
+      ],
+      "properties": {
+        "tipo": {
+          "type": "string",
+          "enum": [
+            "cobro_create",
+            "cobro_create_and_associate"
+          ]
+        },
+        "fecha": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Fecha del recibo en formato YYYY-MM-DD."
+        },
+        "cliente": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "idclipro": {
+              "type": "string"
+            },
+            "nombre": {
+              "type": "string"
+            },
+            "cuit": {
+              "type": "string",
+              "pattern": "^[0-9]{11}$"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "idclipro"
+              ]
+            },
+            {
+              "required": [
+                "nombre"
+              ]
+            },
+            {
+              "required": [
+                "cuit"
+              ]
+            }
+          ]
+        },
+        "recibo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "movimientos"
+          ],
+          "properties": {
+            "comentarios": {
+              "type": "string"
+            },
+            "memo": {
+              "type": "string"
+            },
+            "referencia": {
+              "type": "string"
+            },
+            "centro_costo": {
+              "type": "string",
+              "description": "Si se omite, se usa General."
+            },
+            "numero_recibo": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Opcional. Si se omite, el sistema toma el proximo numero."
+            },
+            "moneda": {
+              "type": "string",
+              "default": "ARS"
+            },
+            "tipocambio": {
+              "type": "string",
+              "default": "1"
+            },
+            "total_esperado": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+              "description": "Si viene informado, se valida contra la suma de movimientos."
+            },
+            "movimientos": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "tipo",
+                      "cuenta_id",
+                      "monto"
+                    ],
+                    "properties": {
+                      "tipo": {
+                        "const": "simple"
+                      },
+                      "cuenta_id": {
+                        "type": "string"
+                      },
+                      "monto": {
+                        "type": "string",
+                        "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "tipo",
+                      "cuenta_id",
+                      "banco_id",
+                      "fecha",
+                      "numero",
+                      "monto"
+                    ],
+                    "properties": {
+                      "tipo": {
+                        "const": "cheque"
+                      },
+                      "cuenta_id": {
+                        "type": "string"
+                      },
+                      "banco_id": {
+                        "type": "string"
+                      },
+                      "fecha": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                      },
+                      "numero": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      },
+                      "monto": {
+                        "type": "string",
+                        "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "tipo",
+                      "cuenta_id",
+                      "fecha",
+                      "regimen",
+                      "monto"
+                    ],
+                    "properties": {
+                      "tipo": {
+                        "const": "retencion"
+                      },
+                      "cuenta_id": {
+                        "type": "string"
+                      },
+                      "fecha": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                      },
+                      "regimen": {
+                        "type": "string"
+                      },
+                      "numero": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      },
+                      "monto": {
+                        "type": "string",
+                        "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "asociacion": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exigir_cuadre_total": {
+              "type": "boolean",
+              "default": true
+            },
+            "facturas": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "comprobante": {
+                    "type": "string",
+                    "description": "Por ejemplo C-0002-00000005."
+                  },
+                  "fecha": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "total": {
+                    "type": "string",
+                    "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "id"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "comprobante"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "validaciones": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exigir_cliente_unico": {
+              "type": "boolean",
+              "default": true
+            },
+            "exigir_cuit_trabajo_explicito": {
+              "type": "boolean",
+              "default": true
+            },
+            "exigir_fecha_explicita": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tipo": {
+                "const": "cobro_create_and_associate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "asociacion"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+

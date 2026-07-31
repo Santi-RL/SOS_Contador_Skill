@@ -1,0 +1,73 @@
+{
+  "contexto": {
+    "cuit_trabajo": {
+      "cuit": "<cuit_trabajo>",
+      "nombre": "Empresa Demo S.R.L.",
+      "alias": "empresa demo"
+    },
+    "periodo_visual": "2026-03",
+    "modo_prueba": false
+  },
+  "operacion": {
+    "tipo": "cobro_create_and_associate",
+    "fecha": "2026-03-19",
+    "cliente": {
+      "nombre": "Cliente Demo S.A.",
+      "cuit": "<cuit_cliente>"
+    },
+    "recibo": {
+      "comentarios": "OP 12345",
+      "centro_costo": "General",
+      "total_esperado": "4500.00",
+      "movimientos": [
+        {
+          "tipo": "cheque",
+          "cuenta_id": "<id_cuenta_valores_a_depositar>",
+          "banco_id": "1051",
+          "fecha": "2026-03-25",
+          "numero": "26031621",
+          "monto": "1800.00"
+        },
+        {
+          "tipo": "cheque",
+          "cuenta_id": "<id_cuenta_valores_a_depositar>",
+          "banco_id": "1031",
+          "fecha": "2026-03-28",
+          "numero": "26031622",
+          "monto": "2200.00"
+        },
+        {
+          "tipo": "retencion",
+          "cuenta_id": "<id_cuenta_retencion_iva>",
+          "fecha": "2026-03-19",
+          "regimen": "216",
+          "numero": "26031623",
+          "monto": "500.00"
+        }
+      ]
+    },
+    "asociacion": {
+      "exigir_cuadre_total": true,
+      "facturas": [
+        {
+          "comprobante": "C-0002-00000004",
+          "fecha": "2026-03-18",
+          "total": "1700.00"
+        },
+        {
+          "comprobante": "C-0002-00000005",
+          "fecha": "2026-03-17",
+          "total": "2800.00"
+        }
+      ]
+    },
+    "validaciones": {
+      "exigir_cliente_unico": true,
+      "exigir_cuit_trabajo_explicito": true,
+      "exigir_fecha_explicita": true
+    }
+  }
+}
+
+
+

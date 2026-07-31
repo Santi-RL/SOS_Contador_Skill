@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-07-30",
+  "source": "https://documenter.getpostman.com/view/1566360/SWTD6vnC?version=latest",
+  "operations": [
+    {"id":"auth.register","module":"auth","method":"POST","path":"register","auth":"none","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Registrar una cuenta de usuario."},
+    {"id":"auth.login","module":"auth","method":"POST","path":"login","auth":"none","query":[],"body":"required","side_effect":false,"status":"internal","invokable":false,"guidance":"Use 'auth info' para autenticar sin exponer tokens.","summary":"Obtener el JWT de usuario."},
+    {"id":"auth.credentials","module":"auth","method":"GET","path":"cuit/credentials/:idcuit","auth":"jwt","query":[],"body":"none","side_effect":false,"status":"internal","invokable":false,"guidance":"Los helpers obtienen el JWTC automáticamente al fijar el CUIT de trabajo.","summary":"Obtener el JWTC de un contribuyente."},
+
+    {"id":"actividad.list","module":"actividad","method":"GET","path":"actividad/listado/:busca?","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Listar o buscar actividades de ARCA/AFIP."},
+    {"id":"afip.eventanilla","module":"afip","method":"GET","path":"afip/eventanilla","auth":"jwtc","query":["desde","hasta"],"body":"none","side_effect":false,"status":"documented","summary":"Listar comunicaciones de e-Ventanilla por fechas."},
+
+    {"id":"asiento.list","module":"asiento","method":"GET","path":"asiento/listado/:periodo","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"documented","summary":"Listar asientos por período."},
+    {"id":"asiento.get","module":"asiento","method":"GET","path":"asiento/detalle/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Obtener el detalle de un asiento."},
+    {"id":"asiento.save","module":"asiento","method":"PUT","path":"asiento/:id?","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Crear o modificar un asiento."},
+    {"id":"asiento.delete","module":"asiento","method":"DELETE","path":"asiento/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un asiento."},
+    {"id":"cae.status","module":"cae","method":"GET","path":"cae/status/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Consultar el estado de obtención de CAE de una venta."},
+
+    {"id":"centrocosto.list","module":"centrocosto","method":"GET","path":"centrocosto/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Listar centros de costo."},
+    {"id":"centrocosto.create","module":"centrocosto","method":"POST","path":"centrocosto","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Crear un centro de costo."},
+    {"id":"centrocosto.update","module":"centrocosto","method":"PUT","path":"centrocosto/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Modificar un centro de costo."},
+    {"id":"centrocosto.delete","module":"centrocosto","method":"DELETE","path":"centrocosto/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un centro de costo."},
+
+    {"id":"cliente.list","module":"cliente","method":"GET","path":"cliente/listado","auth":"jwtc","query":["proveedor","cliente","pagina","registros"],"body":"none","side_effect":false,"status":"validated","summary":"Listar clientes y proveedores."},
+    {"id":"cliente.create","module":"cliente","method":"POST","path":"cliente","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Crear un cliente o proveedor."},
+    {"id":"cliente.update","module":"cliente","method":"PUT","path":"cliente/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Modificar un cliente o proveedor."},
+    {"id":"cliente.delete","module":"cliente","method":"DELETE","path":"cliente/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un cliente o proveedor."},
+
+    {"id":"cobro.list","module":"cobro","method":"GET","path":"cobro/listado/:periodo","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"validated","summary":"Listar cobros por período relativo."},
+    {"id":"cobro.get","module":"cobro","method":"GET","path":"cobro/detalle/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"limited","summary":"Obtener el detalle público de un cobro; algunas respuestas reales son incompletas."},
+    {"id":"cobro.save","module":"cobro","method":"PUT","path":"cobro/:id?","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Crear o modificar un cobro con la estructura pública."},
+    {"id":"cobro.delete","module":"cobro","method":"DELETE","path":"cobro/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"blocked","summary":"Eliminar o dar de baja un cobro; bloqueado por seguridad en el CLI."},
+
+    {"id":"compra.list","module":"compra","method":"GET","path":"compra/listado/:periodo","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"validated","summary":"Listar compras por período relativo."},
+    {"id":"compra.get","module":"compra","method":"GET","path":"compra/detalle/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Obtener el detalle de una compra."},
+    {"id":"compra.search","module":"compra","method":"POST","path":"compra/consulta","auth":"jwtc","query":[],"body":"required","side_effect":false,"status":"validated","summary":"Consultar compras por rango y filtros."},
+    {"id":"compra.save","module":"compra","method":"PUT","path":"compra/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Crear con id 0 o modificar una compra."},
+    {"id":"compra.delete","module":"compra","method":"DELETE","path":"compra/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"blocked","summary":"Eliminar o dar de baja una compra; bloqueado por seguridad en el CLI."},
+
+    {"id":"cuit.list","module":"cuit","method":"GET","path":"cuit/listado","auth":"jwt","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Listar CUIT propias y compartidas."},
+    {"id":"cuit.credentials","module":"cuit","method":"GET","path":"cuit/credentials/:idcuit","auth":"jwt","query":[],"body":"none","side_effect":false,"status":"internal","invokable":false,"guidance":"Los helpers obtienen el JWTC automáticamente al fijar el CUIT de trabajo.","summary":"Obtener el JWTC de un contribuyente."},
+    {"id":"cuit.parameters","module":"cuit","method":"GET","path":"cuit/parametros","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Obtener parámetros del contribuyente para la aplicación móvil."},
+    {"id":"cuit.ccma","module":"cuit","method":"GET","path":"cuit/ccma","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Obtener parámetros CCMA del contribuyente."},
+    {"id":"cuit.sct","module":"cuit","method":"GET","path":"cuit/sct","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Obtener parámetros SCT del contribuyente."},
+    {"id":"cuit.create","module":"cuit","method":"POST","path":"cuit","auth":"jwt","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Crear un contribuyente en la cuenta."},
+    {"id":"cuit.mobile.update","module":"cuit","method":"PUT","path":"cuit/parametros/mobile","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Modificar parámetros móviles del contribuyente."},
+
+    {"id":"cuentacontable.list","module":"cuentacontable","method":"GET","path":"cuentacontable/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Listar el plan de cuentas."},
+    {"id":"cuentacorriente.list","module":"cuentacorriente","method":"GET","path":"cuentacorriente/listado","auth":"jwtc","query":[],"body":"optional","side_effect":false,"status":"experimental","summary":"Consultar cuentas corrientes; la documentación advierte que no está implementado."},
+    {"id":"email.send","module":"email","method":"POST","path":"email/enviar","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Enviar comprobantes por correo electrónico."},
+
+    {"id":"grupomodificador.list","module":"grupomodificador","method":"GET","path":"grupomodificador/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Listar grupos modificadores."},
+    {"id":"grupomodificador.create","module":"grupomodificador","method":"POST","path":"grupomodificador","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Crear un grupo modificador."},
+    {"id":"grupomodificador.update","module":"grupomodificador","method":"PUT","path":"grupomodificador/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Modificar un grupo modificador."},
+    {"id":"grupomodificador.delete","module":"grupomodificador","method":"DELETE","path":"grupomodificador/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un grupo modificador."},
+    {"id":"impresion.parameters","module":"impresion","method":"GET","path":"impresion/parametros","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Obtener parámetros de impresión móvil."},
+    {"id":"indiceaniomes.list","module":"indiceaniomes","method":"GET","path":"indiceaniomes/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"documented","summary":"Listar índices mensuales y condiciones de ajuste por inflación."},
+
+    {"id":"iva.list","module":"iva","method":"GET","path":"iva/listado/:ejercicio","auth":"jwtc","query":["anio","mes"],"body":"none","side_effect":false,"status":"documented","summary":"Obtener recordsets F2002 de IVA por actividad."},
+    {"id":"libroiva.ventas","module":"libroiva","method":"GET","path":"libroivaventa/listado/:ejercicio","auth":"jwtc","query":["anio","mes"],"body":"none","side_effect":false,"status":"documented","summary":"Obtener el Libro IVA Ventas."},
+    {"id":"libroiva.compras","module":"libroiva","method":"GET","path":"libroivacompra/listado/:ejercicio","auth":"jwtc","query":["anio","mes"],"body":"none","side_effect":false,"status":"documented","summary":"Obtener el Libro IVA Compras."},
+    {"id":"mayor.list","module":"mayor","method":"GET","path":"mayor/listado/:ejercicio","auth":"jwtc","query":["fechadesde","fechahasta","pagina","registros","arbol"],"body":"none","side_effect":false,"status":"experimental","summary":"Consultar el mayor por ejercicio, fechas y cuenta; Postman omite la autenticación explícita."},
+
+    {"id":"pago.list","module":"pago","method":"GET","path":"pago/listado/:periodo","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"validated","summary":"Listar pagos por período relativo."},
+    {"id":"pago.get","module":"pago","method":"GET","path":"pago/detalle/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Obtener el detalle de un pago."},
+    {"id":"pago.save","module":"pago","method":"PUT","path":"pago/:id?","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Crear o modificar un pago."},
+    {"id":"pago.delete","module":"pago","method":"DELETE","path":"pago/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"blocked","summary":"Eliminar o dar de baja un pago; bloqueado por seguridad en el CLI."},
+
+    {"id":"producto.list","module":"producto","method":"GET","path":"producto/listado","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"validated","summary":"Listar productos."},
+    {"id":"producto.create","module":"producto","method":"POST","path":"producto","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Crear un producto."},
+    {"id":"producto.update","module":"producto","method":"PUT","path":"producto/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"validated","summary":"Modificar un producto."},
+    {"id":"producto.delete","module":"producto","method":"DELETE","path":"producto/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un producto."},
+    {"id":"provincia.list","module":"provincia","method":"GET","path":"provincia/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Listar provincias."},
+
+    {"id":"puntoventa.list","module":"puntoventa","method":"GET","path":"puntoventa/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Listar puntos de venta."},
+    {"id":"puntoventa.create","module":"puntoventa","method":"POST","path":"puntoventa","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Crear un punto de venta."},
+    {"id":"puntoventa.update","module":"puntoventa","method":"PUT","path":"puntoventa/:id","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented","summary":"Modificar un punto de venta."},
+    {"id":"puntoventa.delete","module":"puntoventa","method":"DELETE","path":"puntoventa/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Eliminar un punto de venta."},
+    {"id":"recibo.list","module":"recibo","method":"GET","path":"recibo/listado/:periodo","auth":"jwtc","query":["pagina","registros"],"body":"none","side_effect":false,"status":"documented","summary":"Listar recibos por período relativo."},
+    {"id":"sumasysaldos.list","module":"sumasysaldos","method":"GET","path":"sumasysaldos/listado/:ejercicio","auth":"jwtc","query":["fechadesde","fechahasta"],"body":"none","side_effect":false,"status":"documented","summary":"Obtener sumas y saldos por ejercicio y rango."},
+    {"id":"tipo.list","module":"tipo","method":"GET","path":"tipo/listado/:modulo/:busca?","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Listar parámetros de tipo por módulo."},
+    {"id":"unidad.list","module":"unidad","method":"GET","path":"unidad/listado","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Listar unidades de ARCA/AFIP."},
+
+    {"id":"venta.list","module":"venta","method":"GET","path":"venta/listado/:modo/:periodo/:cae","auth":"jwtc","query":["pagina","registros","fecha_desde","fecha_hasta"],"body":"none","side_effect":false,"status":"validated","summary":"Listar ventas por modo, período y estado de CAE."},
+    {"id":"venta.get","module":"venta","method":"GET","path":"venta/detalle/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Obtener el detalle de una venta."},
+    {"id":"venta.pdf","module":"venta","method":"GET","path":"venta/pdf/:id","auth":"jwtc","query":[],"body":"none","side_effect":false,"status":"validated","summary":"Descargar el PDF de una venta."},
+    {"id":"venta.search","module":"venta","method":"POST","path":"venta/consulta","auth":"jwtc","query":["pagina","registros"],"body":"required","side_effect":false,"status":"validated","summary":"Consultar ventas por fechas, números, sucursales, tipos y clientes."},
+    {"id":"venta.archive","module":"venta","method":"PUT","path":"venta/archivar/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"documented","summary":"Marcar una venta como archivada."},
+    {"id":"venta.save","module":"venta","method":"PUT","path":"venta/:id?","auth":"jwtc","query":[],"body":"required","side_effect":true,"status":"documented-unvalidated","summary":"Crear o modificar una venta por la API pública."},
+    {"id":"venta.delete","module":"venta","method":"DELETE","path":"venta/:id","auth":"jwtc","query":[],"body":"none","side_effect":true,"status":"blocked","summary":"Eliminar o dar de baja una venta; bloqueado por seguridad en el CLI."}
+  ]
+}

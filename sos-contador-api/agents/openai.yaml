@@ -1,0 +1,4 @@
+interface:
+  display_name: "SOS Contador API"
+  short_description: "Opera SOS Contador por API con guardas seguras"
+  default_prompt: "Usá $sos-contador-api para consultar u operar SOS Contador con un CUIT de trabajo explícito y previsualización antes de cualquier escritura."

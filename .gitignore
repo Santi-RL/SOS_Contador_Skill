@@ -1,0 +1,40 @@
+# Python and test artifacts
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.tmp/
+tmp/
+tests/tmp-*/
+
+# Editors and local tooling
+.vscode/
+.idea/
+.playwright-cli/
+.codex-remote-attachments/
+
+# SOS Contador private runtime data
+**/.env.local
+**/.cuit_aliases.json
+**/.cuit_catalog_cache.json
+**/.document_catalog_cache.json
+**/.draft_cache/
+**/local/
+
+# Documents and exports are private by default. Public fixtures and skill
+# assets must be added only under the explicitly allowed directories.
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.xls
+*.xlsx
+*.csv
+!tests/fixtures/**
+!sos-contador-api/assets/**
+
+# Common secret-bearing formats
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
