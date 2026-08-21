@@ -130,8 +130,8 @@ Observed behavior:
 
 Current scope limit:
 
-- the dedicated `compra create` helper is still not wrapped in the CLI
-- until it is wrapped, use the cataloged `compra.save` operation with `api describe` and `api invoke`; use `--param id=0` for create and never guess from `cobro` / `pago` symmetry
+- `compra draft` and `compra create` wrap the analysis-first document workflow, freeze the approved payload and verify the resulting purchase
+- use the cataloged `compra.save` operation with `api describe` and `api invoke` only for low-level or non-document cases; use `--param id=0` for create and never guess from `cobro` / `pago` symmetry
 - for the full analysis-first workflow, read [mis-comprobantes-afip.md](mis-comprobantes-afip.md)
 - for purchase folders with one invoice PDF per file, also read [compra-from-pdf-folder.md](compra-from-pdf-folder.md)
 
@@ -254,9 +254,10 @@ Current implemented fallback:
 - `cobro create --draft-id ... --confirm` after reviewing the preview and reusing the work CUIT already fixed in the draft
 - `cobro create --cuit-trabajo ... --movimientos-json ...` for cheques recibidos and retenciones sufridas
 - `cobro asociar --cuit-trabajo ... --factura ... [--factura ...]`
+- `compra create --draft-id ... --confirm` uses the internal listing with `idtipo_operacion=4` as a complementary status check
 - `venta create --cuit-trabajo ... --productos-json ...`
 
-The same internal listing/export endpoints are also usable for purchase dedupe by exact date range with `idtipo_operacion=4`, even though that helper is not wrapped yet.
+The same internal listing/export endpoints are also usable for purchase status verification by exact date range with `idtipo_operacion=4`.
 
 Observed internal filter used by the web app for cobranza date ranges:
 

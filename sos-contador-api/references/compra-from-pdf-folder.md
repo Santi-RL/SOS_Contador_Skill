@@ -1,171 +1,164 @@
-# Compra From PDF Or Image
+# Compras desde PDF o imagen
 
-This guide documents the validated workflow for loading purchase invoices from PDFs or images where each source represents one supplier invoice.
+Este flujo registra comprobantes de compra provenientes de PDF, imagen o texto. Es análisis primero: el borrador se revisa antes de cualquier escritura y la creación usa exactamente el payload aprobado.
 
-Use it when the user says things like:
+## Flujo recomendado
 
-- "En esta carpeta hay comprobantes de compra pendientes"
-- "Cargá esta foto de una factura"
-- "Armá los borradores y mostrame qué vas a cargar"
-- "Después del OK cargalos"
+1. Resolver explícitamente el CUIT de trabajo.
+2. Tratar cada archivo como un comprobante independiente.
+3. Extraer identidad, proveedor e importes por alícuota.
+4. Resolver el proveedor existente y consultar antecedentes activos comparables.
+5. Deduplicar contra SOS Contador.
+6. Mostrar el borrador y esperar aprobación explícita.
+7. Crear desde el borrador congelado.
+8. Verificar el detalle, la aparición en el período y el estado activo.
 
-It is an analysis-first workflow. Do not write anything until the user explicitly approves the draft table.
+Crear el borrador:
 
-## Goal
-
-Target flow:
-
-1. resolve the `CUIT de trabajo`
-2. inspect the sources and treat each PDF or image as one potential purchase invoice
-3. extract the business fields from every file
-4. deduplicate against SOS
-5. show a compact review table
-6. wait for user OK
-7. create the pending purchases by API
-8. verify each created purchase against SOS using the target period
-
-## What To Extract Per PDF
-
-Minimum normalized fields:
-
-- `Fecha`
-- `Letra`
-- `Punto de venta`
-- `Numero`
-- `Proveedor`
-- `CUIT proveedor`
-- `Neto`
-- `IVA`
-- `Total`
-- `Archivo`
-
-Treat one source as one invoice. Do not merge files unless they are clearly continuation pages or complementary images of the same invoice.
-
-## CUIT Validation Before Supplier Resolution
-
-For every CUIT read from OCR or a low-quality image:
-
-1. normalize it to 11 digits
-2. validate the Argentine check digit
-3. only then query the supplier master
-
-An invalid OCR candidate is not evidence that the supplier is missing. Do not create a supplier from it.
-
-If the candidate is invalid:
-
-- reread the source at the digit level
-- search the master by normalized legal name
-- inspect prior purchases for a unique name, address, and document-family match
-- accept a corrected CUIT only when the evidence identifies one unique supplier; otherwise ask the user
-
-Surface the correction in the draft so the user can verify it.
-
-## Reusing Historical Purchase Patterns
-
-When the supplier already exists, use `compra.search` and `compra.get` to inspect one to three recent active purchases from the same supplier before choosing accounting defaults.
-
-Reusable fields, when the prior documents are commercially analogous:
-
-- `idcuenta`
-- `idcentrocosto`
-- `idprovinciaiibb`
-- the tax-bucket treatment
-
-Never copy:
-
-- date
-- point of sale
-- invoice number
-- amounts
-- CAE
-- cancellation or archival state
-
-For fuel tickets, internal fuel taxes and carbon-dioxide tax may be represented as `nogravado` only when a verified analogous purchase for the same supplier uses that treatment. Do not generalize this mapping to unrelated “other taxes.”
-
-## Review Table
-
-Prefer a compact table that fits the app width:
-
-| Fecha | Comp. | Proveedor | Total |
-| --- | --- | --- | ---: |
-| 03/02/2026 | A 00002-00074746 | CIRUGIA NEDISUR S.R.L | 8.833.000,00 |
-
-Move `CUIT` or `Archivo` to a short supporting list when the full table becomes too wide.
-
-## Deduplication
-
-Before any write, compare every candidate against SOS.
-
-Validated read path:
-
-- `POST /compra/consulta`
-- then `GET /compra/detalle/:id` for exact verification when needed
-
-Validated date rule:
-
-- use ISO dates in the body: `YYYY-MM-DD`
-- example:
-
-```json
-{
-  "fecha_desde": "2026-02-01",
-  "fecha_hasta": "2026-02-28"
-}
+```powershell
+python scripts/sos_contador_api.py compra draft `
+  --source <comprobante.pdf> `
+  --cuit-trabajo <cuit_trabajo> `
+  --preview-format markdown
 ```
 
-Do not use `DD/MM/YYYY` in `compra/consulta`. In real tests for this workspace, that returned empty lists even when purchases existed.
+Después de la aprobación:
 
-The endpoint can return at most 50 rows for a broad range. If a query returns exactly 50 items, treat it as potentially truncated and split the period into quarters or months before concluding that no match exists.
+```powershell
+python scripts/sos_contador_api.py compra create `
+  --draft-id <id_borrador> `
+  --cuit-trabajo <cuit_trabajo> `
+  --confirm
+```
 
-Recommended identity key for one-PDF-per-invoice folders:
+Se pueden pasar varios `--source`, pero cada uno produce un candidato independiente. No unir archivos salvo que sean páginas o vistas complementarias del mismo comprobante. Si representan comprobantes diferentes, crear y confirmar cada compra por separado.
 
-- provider CUIT
-- invoice date
-- `fcncnd`
-- `letra`
-- point of sale
-- number
-- `neto_21`
+## Extracción mínima
+
+Por comprobante, extraer:
+
+- fecha
+- tipo, letra, punto de venta y número
+- nombre y CUIT del proveedor
+- neto e IVA por cada alícuota presente
+- no gravado, exento y otros conceptos cuando estén identificados
+- percepción de IIBB y jurisdicción, si corresponde
 - total
+- archivo de origen
 
-Statuses:
+La fecha extraída de una línea rotulada como `Fecha` tiene prioridad sobre fechas accesorias como inicio de actividades. El body de la API siempre usa `YYYY-MM-DD` en `fecha` y `fechaiva`.
 
-- `ya_cargado`
-- `pendiente`
-- `verificar`
+## Correcciones estructuradas
 
-## Validated Create Shape
+Cuando la lectura automática no sea suficiente, aportar una corrección JSON por cada `--source` mediante `--document-json` o `--document-file`. No combinar ambas opciones. La cantidad de correcciones debe coincidir con la cantidad de fuentes.
 
-Validated write path:
-
-- method: `PUT`
-- path: `compra/0`
-
-Validated minimal body pattern for this workflow:
+Ejemplo genérico:
 
 ```json
 {
   "fecha": "2026-02-03",
-  "idclipro": 59650839,
+  "proveedor_cuit": "<cuit_proveedor>",
+  "fcncnd": "F",
+  "letra": "A",
+  "puntoventa": 2,
+  "numero": 77,
+  "neto_21": 100.00,
+  "iva_21": 21.00,
+  "neto_10_5": 200.00,
+  "iva_10_5": 21.00,
+  "percepcion_iibb": 15.00,
+  "total": 357.00
+}
+```
+
+Campos monetarios admitidos: `neto_0`, `neto_10_5`, `neto_21`, `neto_27`, `iva_0`, `iva_10_5`, `iva_21`, `iva_27`, `nogravado`, `exento`, `percepcion_iibb`, `otros` y `total`.
+
+## CUIT y resolución del proveedor
+
+Para todo CUIT extraído por OCR:
+
+1. normalizarlo a 11 dígitos;
+2. validar el dígito verificador argentino;
+3. recién entonces buscarlo en el maestro.
+
+Un CUIT inválido no demuestra que falte el proveedor. No crear proveedores automáticamente desde un OCR dudoso. Si el proveedor no puede resolverse de forma única, el candidato queda para verificar y no se construye un payload ejecutable.
+
+## Antecedentes contables
+
+Consultar entre una y tres compras activas recientes del mismo proveedor. Reutilizar `idcuenta`, `idcentrocosto` e `idprovinciaiibb` solo cuando los antecedentes disponibles sean consistentes y comercialmente análogos.
+
+Nunca copiar desde antecedentes:
+
+- fecha
+- numeración
+- importes
+- CAE
+- estado de baja o archivo
+
+Si los antecedentes discrepan, el borrador debe requerir verificación en lugar de elegir un ID por mayoría o por orden de aparición.
+
+## Alícuotas, descuentos y tributos
+
+Conservar cada alícuota en una imputación separada. No reducir una compra multialícuota a un único neto o IVA.
+
+Reglas para descuentos:
+
+- si el comprobante informa un descuento asociado a una alícuota, aplicarlo al neto de esa alícuota;
+- si el neto gravado impreso ya refleja el descuento, usar ese neto final y mantener `descuento=0` para evitar duplicarlo;
+- si existe un descuento global que no puede distribuirse con evidencia entre varias alícuotas, marcar el candidato para verificar.
+
+Una percepción identificada como IIBB se registra con identificador `percepcioniibb` y conserva `idprovinciaiibb`. Un renglón genérico de “otros tributos” no se clasifica automáticamente como IIBB. Cuando ambos renglones repiten el mismo importe, no sumarlos dos veces.
+
+## Deduplicación
+
+Consultar `POST /compra/consulta` con fechas ISO y abrir detalles con `GET /compra/detalle/:id` cuando haga falta. Si una consulta devuelve 50 filas, tratarla como potencialmente truncada y subdividir el período.
+
+Clave de identidad:
+
+- CUIT del proveedor
+- `fcncnd`
+- letra
+- punto de venta
+- número
+
+Comparar además fecha, importes por alícuota, tributos y total redondeado a centavos:
+
+- identidad e importes coincidentes: `ya_cargado`;
+- identidad coincidente con importes distintos: `verificar`;
+- sin coincidencia: `pendiente`.
+
+La deduplicación se ejecuta al preparar el borrador y se repite inmediatamente antes del `PUT`. Así se evita duplicar un comprobante si otro proceso lo registró entre la aprobación y la creación.
+
+## Payload congelado
+
+El borrador almacena el body completo, un `uniqueid` UUID v4 y un hash SHA-256 del JSON normalizado. `compra create` valida el hash y envía ese mismo body, sin recalcular cuentas, importes, fechas ni identificadores después del OK.
+
+Forma ilustrativa:
+
+```json
+{
+  "fecha": "2026-02-03",
+  "fechaiva": "2026-02-03",
+  "idclipro": "<id_proveedor>",
   "cuitclipro": "<cuit_proveedor>",
   "fcncnd": "F",
   "letra": "A",
   "puntoventa": 2,
-  "numero": 74746,
-  "numerohasta": 74746,
+  "numero": 77,
+  "numerohasta": 77,
   "obtienecae": false,
-  "fechaiva": "2026-02-03",
-  "idprovinciaiibb": 19,
-  "idcentrocosto": <id_centro_costo>,
-  "memo": "",
-  "referencia": "EMPRESA DEMO 1 FEBRERO 26.pdf",
+  "idprovinciaiibb": "<id_provincia>",
+  "idcentrocosto": "<id_centro_costo>",
   "descuento": 0,
-  "uniqueid": "uuid-v4",
+  "uniqueid": "<uuid_v4>",
   "controlainconsistencia": 0,
   "imputaciones": [
     {
+      "cuid": "<id_cuenta>",
       "imputa": [
-        { "i": "neto", "a": 21.0, "v": 7300000.0 }
+        {"i": "neto", "a": 21.0, "v": 100.0},
+        {"i": "neto", "a": 10.5, "v": 200.0},
+        {"i": "percepcioniibb", "a": 0, "v": 15.0}
       ]
     }
   ],
@@ -173,93 +166,17 @@ Validated minimal body pattern for this workflow:
 }
 ```
 
-Current workspace policy:
+## Verificación posterior
 
-- use an exact historical `idcuenta` when an analogous active purchase confirms the intended classification
-- otherwise omit `idcuenta` unless the user explicitly wants account mapping
-- keep `referencia` with the PDF file name for traceability
+Después de crear:
 
-## Critical Date Rule
+1. consultar `GET /compra/detalle/:id`;
+2. confirmar proveedor, tipo, letra, punto de venta y número;
+3. confirmar `cabecera.fecha`, todas las bases e IVA por alícuota y la percepción de IIBB;
+4. reconciliar el total redondeando a centavos;
+5. confirmar el ID en `POST /compra/consulta` para el período de la fecha persistida;
+6. confirmar que no tenga `cancelado=1`, `fechabaja` ni pertenezca a una sección de anulados.
 
-This was the main live issue found in this workflow.
+Una respuesta exitosa de creación no reemplaza esta verificación. En particular, la fecha operativa para la consulta del período es `cabecera.fecha`; otros campos de fecha pueden quedar vacíos en el detalle.
 
-For purchase creates and updates through the public API:
-
-- send `fecha` in ISO format `YYYY-MM-DD`
-- send `fechaiva` in ISO format `YYYY-MM-DD`
-
-Do not send purchase dates as `DD/MM/YYYY`.
-
-Observed real behavior when `DD/MM/YYYY` was sent:
-
-- the API created the purchase successfully
-- but SOS stored `cabecera.fecha` with the creation timestamp instead of the invoice date
-- the purchase then disappeared from `compra/consulta` for the target month
-
-Operational consequence:
-
-- a successful create response is not enough
-- always verify the stored date after creation
-
-## Post-Create Verification
-
-After each create:
-
-1. call `GET /compra/detalle/:id`
-2. confirm:
-   - provider CUIT
-   - `letra`
-   - point of sale
-   - number
-   - `neto_21`
-   - total
-   - stored date
-   - account and tax buckets when copied from an analogous purchase
-3. call `POST /compra/consulta` for the target ISO date range
-4. confirm that the created ID appears in that period listing
-5. confirm in the internal listing/export that the purchase is not annulled
-   - reject the result if the listing shows `cancelado=1`, non-empty `fechabaja`, or the record under `ANULADOS`
-
-In real tests for this workspace:
-
-- `cabecera.fecha` was the operative date used by `compra/consulta`
-- `fechaiva` and `fechacbte` could remain `null` in the detail payload even after the purchase was correctly positioned in the target month
-
-So the practical verification field is:
-
-- `cabecera.fecha`
-
-not:
-
-- `fechaiva`
-- `fechacbte`
-
-Some detail responses preserve sub-cent values such as VAT calculated to four decimals. Compare monetary results after rounding to cents, while also confirming that the unrounded components reconcile mathematically.
-
-## Recommended Execution Pattern
-
-1. resolve the work CUIT from alias or explicit CUIT
-2. list the PDF folder
-3. parse one invoice per PDF
-4. build the compact review table
-5. wait for explicit user approval
-6. create the pending purchases
-7. if any purchase was created with a wrong stored date, correct it immediately with `PUT /compra/:id` using the same body but ISO dates
-8. re-run the final verification against the target month
-
-Never use this workflow to annul a purchase unless the user explicitly asked for that exact action.
-
-## Current Scope
-
-This workflow is validated operationally for:
-
-- purchase PDFs
-- purchase images
-- one invoice per file
-- standard `Factura A`
-- suppliers already present in SOS
-- API-first creation and correction
-
-It is not yet wrapped as a dedicated CLI helper. Until then, treat it as a documented manual skill workflow built on top of the same local client and draft cache.
-
-
+Este flujo no anula, elimina ni da de baja compras.
