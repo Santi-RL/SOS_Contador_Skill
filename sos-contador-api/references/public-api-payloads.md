@@ -209,7 +209,7 @@ La forma pública no representa el detalle completo de cheques y retenciones. Pa
   "fecha": "2026-01-31",
   "fechaiva": "2026-01-31",
   "idclipro": "<id_proveedor>",
-  "cuitclipro": "30000000001",
+  "cuitclipro": "30000000015",
   "fcncnd": "F",
   "letra": "A",
   "puntoventa": 1,
@@ -224,7 +224,14 @@ La forma pública no representa el detalle completo de cheques y retenciones. Pa
   "uniqueid": "<uuid_nuevo>",
   "controlainconsistencia": 0,
   "imputaciones": [
-    {"imputa":[{"i":"neto","a":21.0,"v":100.0}],"cuid":"<id_cuenta>"}
+    {
+      "cuid":"<id_cuenta>",
+      "imputa":[
+        {"i":"neto","a":21.0,"v":100.0},
+        {"i":"neto","a":10.5,"v":200.0},
+        {"i":"percepcioniibb","a":0,"v":15.0}
+      ]
+    }
   ],
   "productos": [
     {"id":"<id_producto>","u":7,"fc":1,"fu":100.0,"fa":21.0,"cuid":"<id_cuenta>"}
@@ -232,7 +239,9 @@ La forma pública no representa el detalle completo de cheques y retenciones. Pa
 }
 ```
 
-Omitir `idcuenta` solo cuando se acepte que SOS asigne su valor predeterminado. Verificar siempre la fecha persistida y que el comprobante permanezca activo.
+Mantener cada base en una imputación separada según su alícuota. Registrar la percepción provincial identificada como IIBB con `i="percepcioniibb"` y conservar `idprovinciaiibb`; no convertir automáticamente otros tributos genéricos en IIBB. Si el neto ya refleja descuentos, mantener `descuento=0` para no duplicarlos.
+
+Omitir `idcuenta` solo cuando se acepte que SOS asigne su valor predeterminado. Para documentos usar preferentemente `compra draft` y `compra create`, que congelan el payload aprobado, repiten la deduplicación antes de escribir y verifican el resultado. Verificar siempre la fecha persistida, todas las alícuotas y que el comprobante permanezca activo.
 
 ## Ventas
 

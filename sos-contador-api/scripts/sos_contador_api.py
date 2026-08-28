@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import hashlib
 import http.cookiejar
 import io
 import json
@@ -93,6 +94,7 @@ PROFILE_SCOPE_TEXT = "text"
 PROFILE_DOCUMENT_KIND_COBRO = "cobro_recibo"
 PROFILE_DOCUMENT_DATE_TOKEN = "__DOCUMENT_DATE__"
 AFIP_DRAFT_KIND = "afip_mis_comprobantes"
+COMPRA_DOCUMENT_DRAFT_KIND = "compra_documento"
 AFIP_PURCHASE_PROVIDER_PROVINCE_ID = 19
 AFIP_PURCHASE_PROVIDER_COND_IVA_A = 1
 AFIP_PURCHASE_PROVIDER_COND_IVA_C = 3
@@ -6516,10 +6518,17 @@ def summarize_compra_detail_for_afip(detail: dict[str, Any]) -> dict[str, Any]:
         "numero": int(cabecera.get("numero") or 0),
         "cae": digits_only(str(cabecera.get("cae") or "")),
         "memo": str(cabecera.get("memo") or ""),
+        "neto_0": Decimal("0.00"),
         "neto_10_5": Decimal("0.00"),
         "neto_21": Decimal("0.00"),
+        "neto_27": Decimal("0.00"),
+        "iva_0": Decimal("0.00"),
+        "iva_10_5": Decimal("0.00"),
+        "iva_21": Decimal("0.00"),
+        "iva_27": Decimal("0.00"),
         "nogravado": Decimal("0.00"),
         "exento": Decimal("0.00"),
+        "percepcion_iibb": Decimal("0.00"),
         "otros": Decimal("0.00"),
         "total": Decimal("0.00"),
     }
@@ -6531,10 +6540,15 @@ def summarize_compra_detail_for_afip(detail: dict[str, Any]) -> dict[str, Any]:
         monto = decimal_or_zero(imputacion.get("montodebe"))
         iva = decimal_or_zero(imputacion.get("iva_debe"))
         if identifier == "neto":
-            if alicuota == Decimal("10.5"):
-                summary["neto_10_5"] += monto * sign
-            elif alicuota == Decimal("21"):
-                summary["neto_21"] += monto * sign
+            rate_key = {
+                Decimal("0"): "0",
+                Decimal("10.5"): "10_5",
+                Decimal("21"): "21",
+                Decimal("27"): "27",
+            }.get(alicuota)
+            if rate_key:
+                summary[f"neto_{rate_key}"] += monto * sign
+                summary[f"iva_{rate_key}"] += iva * sign
             summary["total"] += (monto + iva) * sign
         elif identifier == "nogravado":
             summary["nogravado"] += monto * sign
@@ -6542,10 +6556,27 @@ def summarize_compra_detail_for_afip(detail: dict[str, Any]) -> dict[str, Any]:
         elif identifier == "exento":
             summary["exento"] += monto * sign
             summary["total"] += monto * sign
+        elif identifier == "percepcioniibb":
+            summary["percepcion_iibb"] += monto * sign
+            summary["total"] += monto * sign
         elif identifier == "percepcionotra":
             summary["otros"] += monto * sign
             summary["total"] += monto * sign
-    for key in ("neto_10_5", "neto_21", "nogravado", "exento", "otros", "total"):
+    for key in (
+        "neto_0",
+        "neto_10_5",
+        "neto_21",
+        "neto_27",
+        "iva_0",
+        "iva_10_5",
+        "iva_21",
+        "iva_27",
+        "nogravado",
+        "exento",
+        "percepcion_iibb",
+        "otros",
+        "total",
+    ):
         summary[key] = quantize_money(summary[key])
     return summary
 
@@ -6927,6 +6958,942 @@ def command_afip_import(args: argparse.Namespace, client: SOSContadorClient) -> 
     }
 
 
+COMPRA_RATE_KEYS = {
+    Decimal("0"): "0",
+    Decimal("10.5"): "10_5",
+    Decimal("21"): "21",
+    Decimal("27"): "27",
+}
+COMPRA_AMOUNT_KEYS = (
+    "neto_0",
+    "neto_10_5",
+    "neto_21",
+    "neto_27",
+    "iva_0",
+    "iva_10_5",
+    "iva_21",
+    "iva_27",
+    "nogravado",
+    "exento",
+    "percepcion_iibb",
+    "otros",
+    "total",
+)
+COMPRA_DISCOUNT_KEYS = ("descuento_0", "descuento_10_5", "descuento_21", "descuento_27", "descuento_global")
+
+
+def extract_compra_line_amount(line: str) -> Decimal | None:
+    matches = re.findall(r"-?\d[\d., ]*[,.]\d{2,4}", str(line or ""))
+    if not matches:
+        return None
+    try:
+        return quantize_money(smart_decimal_from_text(matches[-1]))
+    except CLIError:
+        return None
+
+
+def extract_compra_rate(line: str, *, prefix: str) -> Decimal | None:
+    pattern = re.compile(
+        rf"(?i){prefix}[^0-9]*(10\s*[,.]\s*5(?:0)?|21(?:\s*[,.]\s*0+)?|27(?:\s*[,.]\s*0+)?|0(?:\s*[,.]\s*0+)?)"
+    )
+    match = pattern.search(str(line or ""))
+    if not match:
+        return None
+    rate_text = re.sub(r"\s+", "", match.group(1)).replace(",", ".")
+    try:
+        rate = Decimal(rate_text)
+    except InvalidOperation:
+        return None
+    return rate if rate in COMPRA_RATE_KEYS else None
+
+
+def extract_compra_document_date(lines: list[str], explicit_date: Any = None) -> str:
+    if explicit_date not in (None, ""):
+        parsed = guess_date_from_text(str(explicit_date)) or parse_isoish_date(str(explicit_date))
+        if parsed and re.fullmatch(r"\d{4}-\d{2}-\d{2}", parsed):
+            return parsed
+        raise CLIError(f"fecha inválida '{explicit_date}'. Use DD/MM/YYYY o YYYY-MM-DD.")
+    pattern = re.compile(r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b")
+    candidates: list[str] = []
+    for line in lines:
+        normalized = normalize_search_text(line)
+        if "fecha" not in normalized or "inicio de actividades" in normalized:
+            continue
+        match = pattern.search(line)
+        if match:
+            candidates.append(match.group(0))
+    if len(set(candidates)) == 1:
+        return guess_date_from_text(candidates[0]) or ""
+    return ""
+
+
+def extract_compra_document_identity(lines: list[str]) -> dict[str, Any]:
+    result = {"fcncnd": "", "letra": "", "puntoventa": "", "numero": ""}
+    for line in lines:
+        normalized = normalize_search_text(line)
+        if not any(token in normalized for token in ("factura", "nota de credito", "nota credito", "nota de debito", "nota debito")):
+            continue
+        if "nota" in normalized and "credito" in normalized:
+            result["fcncnd"] = "C"
+        elif "nota" in normalized and "debito" in normalized:
+            result["fcncnd"] = "D"
+        else:
+            result["fcncnd"] = "F"
+        letter_match = re.search(r"(?i)(?:factura|nota(?:\s+de)?\s+(?:credito|debito))\s*[\"']?([A-Z])\b", line)
+        if letter_match:
+            result["letra"] = letter_match.group(1).upper()
+        number_match = re.search(r"\b(\d{1,5})\s*[-–]\s*(\d{1,8})\b", line)
+        if number_match:
+            result["puntoventa"] = str(int(number_match.group(1)))
+            result["numero"] = str(int(number_match.group(2)))
+        if result["letra"] and result["puntoventa"] and result["numero"]:
+            break
+    return result
+
+
+def extract_compra_document_amounts(lines: list[str]) -> dict[str, Decimal]:
+    amounts: dict[str, Decimal] = {}
+    neto_gravado_total: Decimal | None = None
+    otros_candidate: Decimal | None = None
+    for line in lines:
+        normalized = normalize_search_text(line)
+        amount = extract_compra_line_amount(line)
+        if amount is None:
+            continue
+        if "descuento" in normalized:
+            rate = extract_compra_rate(line, prefix=r"(?:descuento|dto)")
+            if rate is not None:
+                amounts[f"descuento_{COMPRA_RATE_KEYS[rate]}"] = amount
+            else:
+                amounts["descuento_global"] = amount
+            continue
+        if "neto" in normalized and "gravado" in normalized:
+            rate = extract_compra_rate(line, prefix=r"(?:neto(?:\s+gravado)?|gravado)")
+            if rate is None:
+                neto_gravado_total = amount
+            else:
+                amounts[f"neto_{COMPRA_RATE_KEYS[rate]}"] = amount
+            continue
+        if "alicuota" in normalized or re.search(r"\biva\b", normalized):
+            rate = extract_compra_rate(line, prefix=r"(?:al[ií]cuota|iva)")
+            if rate is not None:
+                amounts[f"iva_{COMPRA_RATE_KEYS[rate]}"] = amount
+            continue
+        if any(token in normalized for token in ("iibb", "ingresos brutos", "arba")):
+            amounts["percepcion_iibb"] = amount
+            continue
+        if "no gravado" in normalized or "nogravado" in normalized:
+            amounts["nogravado"] = amount
+            continue
+        if "exento" in normalized:
+            amounts["exento"] = amount
+            continue
+        if "otros tributos" in normalized:
+            otros_candidate = amount
+            continue
+        if normalized == "total" or normalized.startswith("total "):
+            amounts["total"] = amount
+    if neto_gravado_total is not None:
+        amounts["neto_gravado_total"] = neto_gravado_total
+    if otros_candidate is not None and not amounts.get("percepcion_iibb"):
+        amounts["otros"] = otros_candidate
+    return amounts
+
+
+def normalize_compra_amounts(raw_fields: dict[str, Any]) -> tuple[dict[str, Decimal], list[str]]:
+    warnings: list[str] = []
+    amounts: dict[str, Decimal] = {}
+    for key in (*COMPRA_AMOUNT_KEYS, *COMPRA_DISCOUNT_KEYS, "neto_gravado_total"):
+        value = raw_fields.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            amounts[key] = quantize_money(smart_decimal_from_text(value))
+        except CLIError as exc:
+            warnings.append(f"{key}: {exc}")
+
+    present_rates = [
+        rate
+        for rate, key in COMPRA_RATE_KEYS.items()
+        if amounts.get(f"iva_{key}") is not None or amounts.get(f"neto_{key}") is not None
+    ]
+    neto_total = amounts.get("neto_gravado_total")
+    if neto_total is not None and len(present_rates) == 1:
+        key = COMPRA_RATE_KEYS[present_rates[0]]
+        amounts.setdefault(f"neto_{key}", neto_total)
+    elif neto_total is not None and len(present_rates) > 1:
+        for rate in present_rates:
+            key = COMPRA_RATE_KEYS[rate]
+            if amounts.get(f"neto_{key}") is None and amounts.get(f"iva_{key}") is not None and rate:
+                amounts[f"neto_{key}"] = quantize_money(amounts[f"iva_{key}"] * Decimal("100") / rate)
+
+    for rate, key in COMPRA_RATE_KEYS.items():
+        neto_key = f"neto_{key}"
+        iva_key = f"iva_{key}"
+        if amounts.get(neto_key) is not None and amounts.get(iva_key) is None:
+            amounts[iva_key] = quantize_money(amounts[neto_key] * rate / Decimal("100"))
+        elif rate and amounts.get(neto_key) is not None and amounts.get(iva_key) is not None:
+            expected_iva = quantize_money(amounts[neto_key] * rate / Decimal("100"))
+            if abs(expected_iva - amounts[iva_key]) > Decimal("0.02"):
+                warnings.append(
+                    f"El IVA de la alícuota {format_decimal_string(rate)} no coincide con su neto gravado."
+                )
+
+    if amounts.get("descuento_global") is not None and len(present_rates) > 1:
+        warnings.append(
+            "El descuento global no puede asignarse con seguridad entre varias alícuotas. Indique los netos finales por alícuota."
+        )
+
+    neto_sum = sum((amounts.get(f"neto_{key}", Decimal("0")) for key in COMPRA_RATE_KEYS.values()), Decimal("0"))
+    if neto_total is not None and abs(quantize_money(neto_sum - neto_total)) > Decimal("0.01"):
+        warnings.append(
+            f"Los netos por alícuota ({format_decimal_string(neto_sum)}) no coinciden con el neto gravado total ({format_decimal_string(neto_total)})."
+        )
+
+    calculated_total = sum((amounts.get(f"neto_{key}", Decimal("0")) for key in COMPRA_RATE_KEYS.values()), Decimal("0"))
+    calculated_total += sum((amounts.get(f"iva_{key}", Decimal("0")) for key in COMPRA_RATE_KEYS.values()), Decimal("0"))
+    calculated_total += sum((amounts.get(key, Decimal("0")) for key in ("nogravado", "exento", "percepcion_iibb", "otros")), Decimal("0"))
+    if amounts.get("total") is not None and abs(quantize_money(calculated_total - amounts["total"])) > Decimal("0.01"):
+        warnings.append(
+            f"La suma de netos, IVA y tributos ({format_decimal_string(calculated_total)}) no coincide con el total ({format_decimal_string(amounts['total'])})."
+        )
+    return amounts, warnings
+
+
+def load_compra_document_overrides(args: argparse.Namespace, source_count: int) -> list[dict[str, Any]]:
+    if (getattr(args, "document_json", None) or []) and (getattr(args, "document_file", None) or []):
+        raise CLIError("Use --document-json o --document-file, no ambas opciones.")
+    raw_items: list[Any] = []
+    for raw in getattr(args, "document_json", None) or []:
+        try:
+            raw_items.append(json.loads(raw))
+        except json.JSONDecodeError as exc:
+            raise CLIError(f"--document-json inválido: {exc}") from exc
+    for file_name in getattr(args, "document_file", None) or []:
+        raw_items.append(load_json_file(Path(file_name), None))
+    if not raw_items:
+        return [{} for _ in range(source_count)]
+    if len(raw_items) != source_count:
+        raise CLIError("Debe indicar un --document-json/--document-file por cada --source.")
+    if not all(isinstance(item, dict) for item in raw_items):
+        raise CLIError("Cada corrección documental debe ser un objeto JSON.")
+    return [dict(item) for item in raw_items]
+
+
+def build_compra_source_fields(
+    extracted_source: dict[str, Any],
+    *,
+    work_cuit: str,
+    overrides: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    lines = extracted_source.get("lines", [])
+    issues: list[str] = []
+    identity = extract_compra_document_identity(lines)
+    extracted_amounts = extract_compra_document_amounts(lines)
+    raw_fields: dict[str, Any] = {
+        **identity,
+        "fecha": extract_compra_document_date(lines),
+        **extracted_amounts,
+    }
+    counterparty_cuits = collect_counterparty_cuits(lines, work_cuit=work_cuit, explicit_cuit=overrides.get("proveedor_cuit"))
+    if len(counterparty_cuits) == 1:
+        raw_fields["proveedor_cuit"] = counterparty_cuits[0]
+    raw_fields.update({key: value for key, value in overrides.items() if value not in (None, "")})
+    if decimal_or_zero(extracted_amounts.get("otros")):
+        tax_override_keys = ("nogravado", "exento", "percepcion_iibb", "otros")
+        has_explicit_tax_classification = any(
+            key in overrides and overrides.get(key) not in (None, "")
+            for key in tax_override_keys
+        )
+        if has_explicit_tax_classification:
+            if "otros" not in overrides:
+                raw_fields.pop("otros", None)
+        else:
+            issues.append(
+                "El comprobante informa otros tributos sin clasificación. Indique explícitamente si corresponden a no gravado, exento, percepción de IIBB u otra percepción."
+            )
+    if raw_fields.get("fecha"):
+        raw_fields["fecha"] = extract_compra_document_date(lines, raw_fields.get("fecha"))
+    if raw_fields.get("proveedor_cuit"):
+        try:
+            raw_fields["proveedor_cuit"] = require_valid_argentina_cuit(
+                raw_fields["proveedor_cuit"],
+                label="CUIT del proveedor",
+            )
+        except CLIError as exc:
+            issues.append(str(exc))
+            raw_fields["proveedor_cuit"] = ""
+    for key in ("puntoventa", "numero", "numerohasta"):
+        if raw_fields.get(key) not in (None, ""):
+            raw_fields[key] = int(digits_only(str(raw_fields[key])) or "0")
+    if raw_fields.get("numero") and not raw_fields.get("numerohasta"):
+        raw_fields["numerohasta"] = raw_fields["numero"]
+    raw_fields["letra"] = str(raw_fields.get("letra") or "").strip().upper()
+    raw_fields["fcncnd"] = str(raw_fields.get("fcncnd") or "F").strip().upper()
+    amounts, amount_issues = normalize_compra_amounts(raw_fields)
+    raw_fields["amounts"] = amounts
+    return raw_fields, [*issues, *amount_issues]
+
+
+def fetch_compra_items_complete(
+    bound_client: SOSContadorClient,
+    *,
+    desde: str,
+    hasta: str,
+) -> tuple[list[dict[str, Any]], bool]:
+    items = fetch_compra_consulta_items(bound_client, desde=desde, hasta=hasta)
+    if len(items) < 50:
+        return items, False
+    start = datetime.date.fromisoformat(desde)
+    end = datetime.date.fromisoformat(hasta)
+    if start >= end:
+        return items, True
+    midpoint = start + datetime.timedelta(days=(end - start).days // 2)
+    left, left_truncated = fetch_compra_items_complete(
+        bound_client,
+        desde=start.isoformat(),
+        hasta=midpoint.isoformat(),
+    )
+    right, right_truncated = fetch_compra_items_complete(
+        bound_client,
+        desde=(midpoint + datetime.timedelta(days=1)).isoformat(),
+        hasta=end.isoformat(),
+    )
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in [*left, *right]:
+        item_id = str(item.get("id") or "")
+        key = item_id or json.dumps(make_json_safe(item), ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged, left_truncated or right_truncated
+
+
+def compra_row_provider_cuit(row: dict[str, Any]) -> str:
+    clipro = row.get("clipro")
+    if isinstance(clipro, dict):
+        return digits_only(str(clipro.get("cuit") or ""))
+    return digits_only(str(row.get("cuit") or ""))
+
+
+def compra_document_code(*, fcncnd: Any, letra: Any, puntoventa: Any, numero: Any) -> str:
+    prefix = {"F": "F", "C": "C", "D": "D"}.get(str(fcncnd or "").upper(), str(fcncnd or "").upper())
+    return f"{prefix}{str(letra or '').upper()}-{int(puntoventa or 0):04d}-{int(numero or 0):08d}"
+
+
+def compra_row_is_active(row: dict[str, Any]) -> bool:
+    true_values = {"1", "true", "si", "sí", "yes", "y"}
+    for key in ("eliminado", "archivado", "cancelado", "anulado"):
+        value = row.get(key)
+        if isinstance(value, bool) and value:
+            return False
+        if isinstance(value, (int, float, Decimal)) and value != 0:
+            return False
+        if isinstance(value, str) and value.strip().lower() in true_values:
+            return False
+    return not bool(str(row.get("fechabaja") or row.get("fecha_baja") or "").strip())
+
+
+def compra_summary_matches_expected(
+    summary: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    fcncnd: Any = None,
+) -> bool:
+    credit_note = str(fcncnd or "").strip().upper() == "C"
+    for key in COMPRA_AMOUNT_KEYS:
+        if key not in expected:
+            continue
+        actual_value = quantize_money(summary.get(key))
+        if credit_note:
+            actual_value = abs(actual_value)
+        if actual_value != quantize_money(expected.get(key)):
+            return False
+    return True
+
+
+def find_compra_duplicate(
+    bound_client: SOSContadorClient,
+    *,
+    fields: dict[str, Any],
+) -> dict[str, Any] | None:
+    fecha = str(fields.get("fecha") or "")
+    proveedor_cuit = digits_only(str(fields.get("proveedor_cuit") or ""))
+    if not fecha or not proveedor_cuit:
+        return None
+    rows, truncated = fetch_compra_items_complete(bound_client, desde=fecha, hasta=fecha)
+    expected_code = compra_document_code(
+        fcncnd=fields.get("fcncnd"),
+        letra=fields.get("letra"),
+        puntoventa=fields.get("puntoventa"),
+        numero=fields.get("numero"),
+    )
+    for row in rows:
+        if compra_row_provider_cuit(row) != proveedor_cuit:
+            continue
+        actual_code = normalize_comprobante_reference(str(row.get("factura") or ""))
+        normalized_expected = normalize_comprobante_reference(expected_code)
+        if actual_code != normalized_expected:
+            continue
+        row_id = row.get("id")
+        detail = bound_client.request("GET", f"compra/detalle/{row_id}")
+        summary = summarize_compra_detail_for_afip(detail)
+        active = compra_row_is_active(row)
+        return {
+            "kind": "exact"
+            if active
+            and compra_summary_matches_expected(
+                summary,
+                fields.get("amounts", {}),
+                fcncnd=fields.get("fcncnd"),
+            )
+            else "identity_conflict",
+            "id": row_id,
+            "active": active,
+            "summary": summary,
+        }
+    if truncated:
+        return {"kind": "truncated", "reason": "La consulta del día alcanzó el límite de 50 compras."}
+    return None
+
+
+def previous_month_start(value: datetime.date) -> datetime.date:
+    if value.month == 1:
+        return datetime.date(value.year - 1, 12, 1)
+    return datetime.date(value.year, value.month - 1, 1)
+
+
+def month_end(value: datetime.date) -> datetime.date:
+    if value.month == 12:
+        return datetime.date(value.year + 1, 1, 1) - datetime.timedelta(days=1)
+    return datetime.date(value.year, value.month + 1, 1) - datetime.timedelta(days=1)
+
+
+def fetch_recent_supplier_purchase_details(
+    bound_client: SOSContadorClient,
+    *,
+    proveedor_cuit: str,
+    fecha: str,
+    limit: int = 3,
+    max_months: int = 24,
+) -> list[dict[str, Any]]:
+    target_date = datetime.date.fromisoformat(fecha)
+    cursor = target_date.replace(day=1)
+    details: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for month_index in range(max_months):
+        end = target_date if month_index == 0 else month_end(cursor)
+        rows, _ = fetch_compra_items_complete(bound_client, desde=cursor.isoformat(), hasta=end.isoformat())
+        matches = [
+            row
+            for row in rows
+            if compra_row_provider_cuit(row) == proveedor_cuit
+            and compra_row_is_active(row)
+        ]
+        matches.sort(key=lambda row: str(row.get("fecha") or ""), reverse=True)
+        for row in matches:
+            row_id = str(row.get("id") or "")
+            if not row_id or row_id in seen_ids:
+                continue
+            seen_ids.add(row_id)
+            details.append(bound_client.request("GET", f"compra/detalle/{row_id}"))
+            if len(details) >= limit:
+                return details
+        cursor = previous_month_start(cursor)
+    return details
+
+
+def infer_compra_historical_defaults(details: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    defaults: dict[str, Any] = {}
+    definitions = {
+        "idcuenta": ("idcuenta",),
+        "idcentrocosto": ("idcentrocosto",),
+        "idprovinciaiibb": ("idprovinciaiibb", "idprovincia"),
+    }
+    for target_key, source_keys in definitions.items():
+        values: set[str] = set()
+        for detail in details:
+            cabecera = detail.get("cabecera", {}) if isinstance(detail, dict) else {}
+            for source_key in source_keys:
+                value = cabecera.get(source_key)
+                if value not in (None, ""):
+                    values.add(str(value))
+                    break
+        if len(values) == 1:
+            defaults[target_key] = next(iter(values))
+        elif len(values) > 1:
+            warnings.append(f"Los antecedentes activos no coinciden en {target_key}.")
+    if details:
+        cabecera = details[0].get("cabecera", {})
+        defaults["cuenta_nombre"] = cabecera.get("cuenta")
+        defaults["centrocosto_nombre"] = cabecera.get("centrocosto")
+        defaults["antecedente_id"] = cabecera.get("id")
+    return defaults, warnings
+
+
+def compra_payload_hash(body: dict[str, Any]) -> str:
+    canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def build_compra_body_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    amounts = fields.get("amounts", {})
+    imputa: list[dict[str, Any]] = []
+    for rate in (Decimal("21"), Decimal("10.5"), Decimal("27"), Decimal("0")):
+        key = COMPRA_RATE_KEYS[rate]
+        value = decimal_or_zero(amounts.get(f"neto_{key}"))
+        if value:
+            imputa.append({"i": "neto", "a": float(rate), "v": float(quantize_money(value))})
+    for identifier, key in (
+        ("nogravado", "nogravado"),
+        ("exento", "exento"),
+        ("percepcioniibb", "percepcion_iibb"),
+        ("percepcionotra", "otros"),
+    ):
+        value = decimal_or_zero(amounts.get(key))
+        if value:
+            imputa.append({"i": identifier, "a": 0.0, "v": float(quantize_money(value))})
+    account_id = str(fields.get("idcuenta") or "")
+    if not account_id:
+        raise CLIError("No se puede construir la compra sin idcuenta.")
+    return {
+        "fecha": fields.get("fecha"),
+        "fechaiva": fields.get("fecha"),
+        "idclipro": int(str(fields.get("idclipro"))),
+        "cuitclipro": fields.get("proveedor_cuit"),
+        "fcncnd": fields.get("fcncnd"),
+        "letra": fields.get("letra"),
+        "puntoventa": int(fields.get("puntoventa") or 0),
+        "numero": int(fields.get("numero") or 0),
+        "numerohasta": int(fields.get("numerohasta") or fields.get("numero") or 0),
+        "obtienecae": False,
+        "idprovinciaiibb": int(str(fields.get("idprovinciaiibb"))),
+        "idcentrocosto": int(str(fields.get("idcentrocosto"))),
+        "memo": str(fields.get("memo") or ""),
+        "referencia": str(fields.get("referencia") or ""),
+        "descuento": 0,
+        "uniqueid": str(uuid.uuid4()),
+        "controlainconsistencia": 0,
+        "imputaciones": [{"imputa": imputa, "cuid": int(account_id)}],
+        "productos": [],
+    }
+
+
+def build_compra_document_draft(args: argparse.Namespace, client: SOSContadorClient) -> dict[str, Any]:
+    sources = [Path(path).expanduser().resolve() for path in (getattr(args, "source", None) or [])]
+    if not sources:
+        raise CLIError("compra draft requiere al menos un --source.")
+    extracted_sources = [extract_source_document(path) for path in sources]
+    overrides = load_compra_document_overrides(args, len(sources))
+    explicit_work_target = resolve_work_cuit_target_from_args(client, args, required=False)
+    if explicit_work_target is not None:
+        work_target = explicit_work_target
+    else:
+        inferred_targets = [extract_document_work_cuit(source.get("lines", []), client) for source in extracted_sources]
+        inferred_cuits = {digits_only(str(item.get("cuit") or "")) for item in inferred_targets if item.get("cuit")}
+        if len(inferred_cuits) != 1:
+            raise CLIError("No se pudo inferir una única CUIT de trabajo. Indíquela explícitamente.")
+        inferred_cuit = next(iter(inferred_cuits))
+        work_target = resolve_work_cuit_target(client, explicit_cuit=inferred_cuit, required=True)
+    bound_client = ensure_bound_client(
+        client,
+        cuit=str(work_target.get("cuit") or ""),
+        cuit_id=str(work_target.get("cuit_id") or ""),
+    )
+
+    rows: list[dict[str, Any]] = []
+    provider_cache: dict[str, dict[str, Any] | None] = {}
+    history_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    stats = {"pendiente": 0, "ya_cargado": 0, "verificar": 0}
+    draft_warnings: list[str] = []
+    for index, (source_path, extracted, document_overrides) in enumerate(zip(sources, extracted_sources, overrides), start=1):
+        fields, issues = build_compra_source_fields(
+            extracted,
+            work_cuit=str(work_target.get("cuit") or ""),
+            overrides=document_overrides,
+        )
+        warnings = [*extracted.get("warnings", []), *extracted.get("capabilities", [])]
+        proveedor_cuit = digits_only(str(fields.get("proveedor_cuit") or ""))
+        provider: dict[str, Any] | None = None
+        if proveedor_cuit:
+            if proveedor_cuit not in provider_cache:
+                try:
+                    provider_cache[proveedor_cuit] = resolve_cliente_match(
+                        bound_client,
+                        explicit_id=None,
+                        cuit=proveedor_cuit,
+                        nombre=str(fields.get("proveedor_nombre") or "") or None,
+                    )
+                except CLIError as exc:
+                    provider_cache[proveedor_cuit] = None
+                    issues.append(str(exc))
+            provider = provider_cache[proveedor_cuit]
+        if provider is not None:
+            fields["idclipro"] = str(find_value(provider, ("idclipro", "id", "idcliente")) or "")
+            fields["proveedor_nombre"] = str(find_value(provider, ("clipro", "cliente", "nombre")) or fields.get("proveedor_nombre") or "")
+
+        history: list[dict[str, Any]] = []
+        if proveedor_cuit and fields.get("fecha"):
+            cache_key = (proveedor_cuit, str(fields.get("fecha")))
+            if cache_key not in history_cache:
+                history_cache[cache_key] = fetch_recent_supplier_purchase_details(
+                    bound_client,
+                    proveedor_cuit=proveedor_cuit,
+                    fecha=str(fields.get("fecha")),
+                )
+            history = history_cache[cache_key]
+        defaults, history_warnings = infer_compra_historical_defaults(history)
+        warnings.extend(history_warnings)
+        for key in ("idcuenta", "idcentrocosto", "idprovinciaiibb"):
+            explicit_value = document_overrides.get(key)
+            if explicit_value not in (None, ""):
+                fields[key] = str(explicit_value)
+            elif defaults.get(key) not in (None, ""):
+                fields[key] = str(defaults[key])
+        if not fields.get("idprovinciaiibb") and provider is not None:
+            provider_province = find_value(provider, ("idprovincia", "idprovinciaiibb"))
+            if provider_province not in (None, ""):
+                fields["idprovinciaiibb"] = str(provider_province)
+        fields["cuenta_nombre"] = defaults.get("cuenta_nombre")
+        fields["centrocosto_nombre"] = defaults.get("centrocosto_nombre")
+        fields["antecedente_id"] = defaults.get("antecedente_id")
+        fields["referencia"] = str(document_overrides.get("referencia") or source_path.name)
+        fields["memo"] = str(document_overrides.get("memo") or "")
+
+        required = {
+            "fecha": fields.get("fecha"),
+            "fcncnd": fields.get("fcncnd"),
+            "letra": fields.get("letra"),
+            "puntoventa": fields.get("puntoventa"),
+            "numero": fields.get("numero"),
+            "proveedor_cuit": proveedor_cuit,
+            "idclipro": fields.get("idclipro"),
+            "idcuenta": fields.get("idcuenta"),
+            "idcentrocosto": fields.get("idcentrocosto"),
+            "idprovinciaiibb": fields.get("idprovinciaiibb"),
+            "total": fields.get("amounts", {}).get("total"),
+        }
+        missing = [key for key, value in required.items() if value in (None, "", 0)]
+        if not any(decimal_or_zero(fields.get("amounts", {}).get(key)) for key in ("neto_0", "neto_10_5", "neto_21", "neto_27", "nogravado", "exento")):
+            missing.append("imputaciones")
+
+        duplicate = find_compra_duplicate(bound_client, fields=fields) if not missing else None
+        status = "pendiente"
+        reason = ""
+        body: dict[str, Any] | None = None
+        if duplicate and duplicate.get("kind") == "exact":
+            status = "ya_cargado"
+            reason = "Coincidencia exacta activa en SOS."
+        elif duplicate:
+            status = "verificar"
+            reason = "La identidad ya existe, pero el estado o los importes no coinciden."
+        elif missing or issues:
+            status = "verificar"
+            reason_parts = [f"Faltan: {', '.join(missing)}"] if missing else []
+            reason = "; ".join([*reason_parts, *issues])
+        else:
+            body = build_compra_body_from_fields(fields)
+        stats[status] += 1
+        if status == "verificar":
+            draft_warnings.append(f"Archivo {source_path.name}: {reason}")
+        rows.append(
+            {
+                "source_index": index,
+                "source": str(source_path),
+                "status": status,
+                "reason": reason,
+                "documento": compra_document_code(
+                    fcncnd=fields.get("fcncnd"),
+                    letra=fields.get("letra"),
+                    puntoventa=fields.get("puntoventa"),
+                    numero=fields.get("numero"),
+                ),
+                "fields": fields,
+                "expected_amounts": fields.get("amounts", {}),
+                "missing_fields": missing,
+                "warnings": warnings,
+                "existing_match_id": (duplicate or {}).get("id"),
+                "body": body,
+                "body_sha256": compra_payload_hash(body) if body is not None else "",
+            }
+        )
+
+    draft = {
+        "draft_id": uuid.uuid4().hex[:12],
+        "draft_kind": COMPRA_DOCUMENT_DRAFT_KIND,
+        "contexto": {
+            "cuit_trabajo": work_target,
+            "fuentes": [{"path": source.get("path"), "kind": source.get("kind")} for source in extracted_sources],
+        },
+        "rows": rows,
+        "stats": stats,
+        "validacion": {"warnings": draft_warnings},
+    }
+    draft = make_json_safe(draft)
+    saved_path = save_draft_payload(draft)
+    draft["draft_file"] = str(saved_path)
+    return draft
+
+
+def build_compra_draft_preview(draft: dict[str, Any]) -> dict[str, Any]:
+    context = draft.get("contexto", {}).get("cuit_trabajo", {})
+    rows: list[dict[str, Any]] = []
+    for row in draft.get("rows", []):
+        fields = row.get("fields", {})
+        amounts = row.get("expected_amounts", {})
+        rows.append(
+            {
+                "Estado": row.get("status"),
+                "Fecha": fields.get("fecha"),
+                "Comprobante": row.get("documento"),
+                "Proveedor": fields.get("proveedor_nombre"),
+                "Neto 0 %": amounts.get("neto_0"),
+                "Neto 10,5 %": amounts.get("neto_10_5"),
+                "Neto 21 %": amounts.get("neto_21"),
+                "Neto 27 %": amounts.get("neto_27"),
+                "IVA 10,5 %": amounts.get("iva_10_5"),
+                "IVA 21 %": amounts.get("iva_21"),
+                "IVA 27 %": amounts.get("iva_27"),
+                "No gravado": amounts.get("nogravado"),
+                "Exento": amounts.get("exento"),
+                "Percepción IIBB": amounts.get("percepcion_iibb"),
+                "Otros tributos": amounts.get("otros"),
+                "Total": amounts.get("total"),
+                "Cuenta": fields.get("cuenta_nombre") or fields.get("idcuenta"),
+                "Centro de costo": fields.get("centrocosto_nombre") or fields.get("idcentrocosto"),
+                "Motivo": row.get("reason"),
+            }
+        )
+    return {
+        "titulo": "compra_draft",
+        "contexto": [{"CUIT de trabajo": context.get("cuit"), "Contribuyente": context.get("nombre")}],
+        "tablas": [{"titulo": "Compras", "rows": rows}],
+        "totales": {
+            "Pendientes": draft.get("stats", {}).get("pendiente", 0),
+            "Ya cargadas": draft.get("stats", {}).get("ya_cargado", 0),
+            "Verificar": draft.get("stats", {}).get("verificar", 0),
+        },
+        "advertencias": draft.get("validacion", {}).get("warnings", []),
+    }
+
+
+def render_compra_draft_markdown(draft: dict[str, Any]) -> str:
+    return render_business_preview_markdown(build_compra_draft_preview(draft))
+
+
+def command_compra_draft(args: argparse.Namespace, client: SOSContadorClient) -> Any:
+    draft = build_compra_document_draft(args, client)
+    preview = build_compra_draft_preview(draft)
+    preview_markdown = render_compra_draft_markdown(draft)
+    if getattr(args, "json_out", None):
+        destination = Path(args.json_out)
+        save_json_file(destination, draft)
+        draft["json_written_to"] = str(destination)
+    preview_format = str(getattr(args, "preview_format", "both") or "both").strip().lower()
+    if preview_format == "markdown":
+        return preview_markdown
+    result = {
+        "draft_id": draft.get("draft_id"),
+        "draft_file": draft.get("draft_file"),
+        "payload": draft,
+        "business_preview": preview,
+    }
+    if preview_format == "both":
+        result["preview_markdown"] = preview_markdown
+    return result
+
+
+def bind_compra_draft_client(
+    draft: dict[str, Any],
+    args: argparse.Namespace,
+    client: SOSContadorClient,
+) -> SOSContadorClient:
+    context = draft.get("contexto", {}).get("cuit_trabajo", {})
+    draft_cuit = digits_only(str(context.get("cuit") or ""))
+    if not draft_cuit:
+        raise CLIError("El borrador no contiene una CUIT de trabajo válida.")
+    if any(
+        getattr(args, key, None)
+        for key in ("cuit_trabajo", "cuit_trabajo_id", "cuit_trabajo_nombre")
+    ):
+        explicit_target = resolve_work_cuit_target_from_args(client, args, required=True)
+        if digits_only(str(explicit_target.get("cuit") or "")) != draft_cuit:
+            raise CLIError("La CUIT de trabajo indicada no coincide con la del borrador.")
+    return ensure_bound_client(
+        client,
+        cuit=draft_cuit,
+        cuit_id=str(context.get("cuit_id") or ""),
+    )
+
+
+def verify_created_compra(
+    bound_client: SOSContadorClient,
+    *,
+    compra_id: Any,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    fields = row.get("fields", {})
+    detail = bound_client.request("GET", f"compra/detalle/{compra_id}")
+    cabecera = detail.get("cabecera", {}) if isinstance(detail, dict) else {}
+    summary = summarize_compra_detail_for_afip(detail if isinstance(detail, dict) else {})
+    issues: list[str] = []
+    expected_identity = {
+        "fecha": str(fields.get("fecha") or ""),
+        "cuit": digits_only(str(fields.get("proveedor_cuit") or "")),
+        "fcncnd": str(fields.get("fcncnd") or ""),
+        "letra": str(fields.get("letra") or ""),
+        "puntoventa": int(fields.get("puntoventa") or 0),
+        "numero": int(fields.get("numero") or 0),
+    }
+    actual_identity = {
+        "fecha": str(cabecera.get("fecha") or "")[:10],
+        "cuit": digits_only(str(cabecera.get("cuit") or "")),
+        "fcncnd": str(cabecera.get("fcncnd") or ""),
+        "letra": str(cabecera.get("letra") or ""),
+        "puntoventa": int(cabecera.get("puntoventa") or 0),
+        "numero": int(cabecera.get("numero") or 0),
+    }
+    for key, expected_value in expected_identity.items():
+        if actual_identity.get(key) != expected_value:
+            issues.append(f"{key}: esperado {expected_value}, obtenido {actual_identity.get(key)}")
+    for key in ("idcuenta", "idcentrocosto", "idprovinciaiibb"):
+        if str(cabecera.get(key) or "") != str(fields.get(key) or ""):
+            issues.append(f"{key}: esperado {fields.get(key)}, obtenido {cabecera.get(key)}")
+    if not compra_summary_matches_expected(
+        summary,
+        row.get("expected_amounts", {}),
+        fcncnd=fields.get("fcncnd"),
+    ):
+        issues.append("Los importes o tratamientos impositivos persistidos no coinciden con el borrador.")
+
+    rows, truncated = fetch_compra_items_complete(
+        bound_client,
+        desde=str(fields.get("fecha") or ""),
+        hasta=str(fields.get("fecha") or ""),
+    )
+    listed = next((item for item in rows if str(item.get("id") or "") == str(compra_id)), None)
+    if listed is None:
+        issues.append("La compra no aparece en la consulta del período esperado.")
+    elif not compra_row_is_active(listed):
+        issues.append("La compra aparece eliminada, archivada o anulada.")
+    if truncated and listed is None:
+        issues.append("La consulta del día quedó truncada en 50 registros.")
+    if issues:
+        raise CLIError(
+            f"La compra {compra_id} fue creada, pero la verificación posterior falló: " + "; ".join(issues)
+        )
+    return {
+        "id": compra_id,
+        "documento": row.get("documento"),
+        "fecha": fields.get("fecha"),
+        "proveedor": fields.get("proveedor_nombre"),
+        "total": row.get("expected_amounts", {}).get("total"),
+        "public_active": True,
+    }
+
+
+def command_compra_create(args: argparse.Namespace, client: SOSContadorClient) -> Any:
+    draft = load_draft_payload(
+        draft_id=getattr(args, "draft_id", None),
+        draft_file=getattr(args, "draft_file", None),
+    )
+    if draft.get("draft_kind") != COMPRA_DOCUMENT_DRAFT_KIND:
+        raise CLIError("El borrador indicado no corresponde a compras desde documentos.")
+    if int(draft.get("stats", {}).get("verificar") or 0):
+        raise CLIError("El borrador contiene compras que requieren verificación. Genere un nuevo borrador corregido.")
+    preview = build_compra_draft_preview(draft)
+    preview_markdown = render_compra_draft_markdown(draft)
+    pending_rows = [row for row in draft.get("rows", []) if row.get("status") == "pendiente"]
+    mutation_payload = {
+        "draft_id": draft.get("draft_id"),
+        "bodies": [row.get("body") for row in pending_rows],
+    }
+    set_mutation_preview(args, business_preview=preview, preview_markdown=preview_markdown)
+    ensure_mutation_allowed("PUT", "compra/create", None, mutation_payload, args)
+    bound_client = bind_compra_draft_client(draft, args, client)
+
+    ready_rows: list[dict[str, Any]] = []
+    skipped_existing: list[dict[str, Any]] = []
+    for row in pending_rows:
+        body = row.get("body")
+        if not isinstance(body, dict) or compra_payload_hash(body) != row.get("body_sha256"):
+            raise CLIError("El payload del borrador cambió. Genere un nuevo borrador antes de confirmar.")
+        fields = row.get("fields", {})
+        provider = resolve_cliente_match(
+            bound_client,
+            explicit_id=None,
+            cuit=str(fields.get("proveedor_cuit") or ""),
+            nombre=str(fields.get("proveedor_nombre") or "") or None,
+        )
+        current_provider_id = str(find_value(provider, ("idclipro", "id", "idcliente")) or "")
+        if current_provider_id != str(body.get("idclipro") or ""):
+            raise CLIError("El proveedor del borrador cambió. Genere un nuevo borrador antes de confirmar.")
+        duplicate = find_compra_duplicate(bound_client, fields=fields)
+        if duplicate and duplicate.get("kind") == "exact":
+            skipped_existing.append(
+                {"documento": row.get("documento"), "id": duplicate.get("id"), "motivo": "ya_cargado"}
+            )
+            continue
+        if duplicate:
+            raise CLIError(
+                f"El comprobante {row.get('documento')} apareció antes de la escritura con datos incompatibles. No se registró el lote."
+            )
+        ready_rows.append(row)
+
+    created: list[dict[str, Any]] = []
+    for row in ready_rows:
+        result = bound_client.request("PUT", "compra/0", body=row.get("body"))
+        compra_id = result.get("id") if isinstance(result, dict) else None
+        if not compra_id:
+            raise CLIError("SOS no devolvió el ID de la compra creada.")
+        created.append(verify_created_compra(bound_client, compra_id=compra_id, row=row))
+
+    internal_status_warning = ""
+    if created:
+        fechas = [str(item.get("fecha") or "") for item in created]
+        try:
+            status_index = fetch_web_comprobante_status_index(
+                bound_client,
+                idtipo_operacion=4,
+                desde_iso=min(fechas),
+                hasta_iso=max(fechas),
+            )
+            annulled = [
+                item
+                for item in created
+                if bool((status_index.get(str(item.get("id") or "")) or {}).get("annulled"))
+            ]
+            if annulled:
+                ids = ", ".join(str(item.get("id")) for item in annulled)
+                raise CLIError(f"La verificación interna detectó compras anuladas: {ids}.")
+            not_listed_ids: list[str] = []
+            for item in created:
+                item["internal_active"] = str(item.get("id") or "") in status_index
+                if not item["internal_active"]:
+                    not_listed_ids.append(str(item.get("id") or ""))
+            if not_listed_ids:
+                internal_status_warning = (
+                    "La verificación pública fue satisfactoria, pero la consulta interna no mostró las compras: "
+                    + ", ".join(not_listed_ids)
+                    + "."
+                )
+        except (APIError, CLIError) as exc:
+            if isinstance(exc, CLIError) and "compras anuladas" in str(exc):
+                raise
+            internal_status_warning = f"No se pudo completar la verificación interna: {exc}"
+
+    return {
+        "draft_id": draft.get("draft_id"),
+        "created_compras": created,
+        "skipped_existing": skipped_existing,
+        "warnings": [internal_status_warning] if internal_status_warning else [],
+        "preview_markdown": preview_markdown,
+    }
+
+
 def command_puntoventa_list(args: argparse.Namespace, client: SOSContadorClient) -> Any:
     bound_client, _ = bind_business_client(client, args, required=True)
     return bound_client.request("GET", "puntoventa/listado")
@@ -6995,6 +7962,15 @@ def add_cobro_profile_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--name")
     parser.add_argument("--profile-id")
     parser.add_argument("--json-out")
+
+
+def add_compra_draft_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--source", action="append", required=True)
+    parser.add_argument("--document-json", action="append")
+    parser.add_argument("--document-file", action="append")
+    add_work_cuit_arguments(parser)
+    parser.add_argument("--json-out")
+    parser.add_argument("--preview-format", choices=("json", "markdown", "both"), default="both")
 
 
 def add_afip_source_arguments(parser: argparse.ArgumentParser) -> None:
@@ -7104,6 +8080,20 @@ def build_parser() -> argparse.ArgumentParser:
     cliente_delete.add_argument("--id", required=True)
     add_mutation_flags(cliente_delete)
     cliente_delete.set_defaults(handler=command_cliente_delete)
+
+    compra = subparsers.add_parser("compra")
+    compra_sub = compra.add_subparsers(dest="compra_command", required=True)
+
+    compra_draft = compra_sub.add_parser("draft")
+    add_compra_draft_arguments(compra_draft)
+    compra_draft.set_defaults(handler=command_compra_draft)
+
+    compra_create = compra_sub.add_parser("create")
+    compra_create.add_argument("--draft-id")
+    compra_create.add_argument("--draft-file")
+    add_work_cuit_arguments(compra_create)
+    add_mutation_flags(compra_create)
+    compra_create.set_defaults(handler=command_compra_create)
 
     producto = subparsers.add_parser("producto")
     producto_sub = producto.add_subparsers(dest="producto_command", required=True)

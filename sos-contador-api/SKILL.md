@@ -1,6 +1,6 @@
 ---
 name: sos-contador-api
-description: Operar SOS Contador mediante su API pública y, solo cuando sea imprescindible, mediante HTTP web-session sin navegador. Usar para autenticar cuentas, resolver contribuyentes por nombre o CUIT, consultar o gestionar clientes, proveedores, productos, ventas, compras, cobros, pagos, recibos, asientos, libros IVA, mayor, sumas y saldos, CAE, centros de costo, puntos de venta, e-Ventanilla, índices y demás operaciones documentadas; también para importar comprobantes de ARCA/AFIP o crear cobranzas desde documentos.
+description: Operar SOS Contador mediante su API pública y, solo cuando sea imprescindible, mediante HTTP web-session sin navegador. Usar para autenticar cuentas, resolver contribuyentes por nombre o CUIT, consultar o gestionar clientes, proveedores, productos, ventas, compras, cobros, pagos, recibos, asientos, libros IVA, mayor, sumas y saldos, CAE, centros de costo, puntos de venta, e-Ventanilla, índices y demás operaciones documentadas; también para importar comprobantes de ARCA/AFIP o crear compras y cobranzas desde documentos.
 ---
 
 # SOS Contador
@@ -31,6 +31,7 @@ Usar estos comandos para los flujos ya validados:
 - `auth info|list-cuits|resolve-cuit|web-info`
 - `cliente list|get|create|update|delete`
 - `producto list|create|update`
+- `compra draft|create`
 - `cobro list|get|list-range|resolve-id|draft|create|asociar|profile`
 - `pago list|get|create`
 - `puntoventa list`
@@ -89,14 +90,20 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 
 - Para “Mis Comprobantes Recibidos/Emitidos”, leer [references/mis-comprobantes-afip.md](references/mis-comprobantes-afip.md).
 - Para compras desde PDF o imágenes, leer [references/compra-from-pdf-folder.md](references/compra-from-pdf-folder.md).
+- En compras documentales, tratar cada `--source` como un comprobante independiente. No fusionar archivos salvo que sean páginas o vistas complementarias del mismo documento.
+- Crear primero `compra draft --source <archivo> --cuit-trabajo <cuit> --preview-format markdown`; mostrar el borrador y esperar el OK explícito.
+- Ejecutar después `compra create --draft-id <id> --confirm`. El comando debe usar sin modificaciones el payload y `uniqueid` congelados en el borrador aprobado.
 - Deducir el CUIT de trabajo únicamente de una sección inequívoca de comprador/receptor.
 - Validar el dígito verificador de todo CUIT extraído por OCR antes de buscar o crear un proveedor. Un CUIT inválido no demuestra que el proveedor falte.
 - Antes de crear un proveedor o elegir una imputación, buscar el maestro por CUIT válido y revisar compras activas anteriores del mismo proveedor cuando existan.
 - Reutilizar cuenta, centro de costo y tratamiento impositivo solo desde antecedentes comercialmente análogos; no copiar fechas, numeración ni importes.
-- Deduplicar antes de escribir.
+- Separar neto e IVA por alícuota. Si el comprobante informa descuentos por alícuota, aplicarlos al neto correspondiente antes de armar las imputaciones; no volver a cargarlos en `descuento` cuando el neto impreso ya es final.
+- Registrar una percepción provincial identificada como IIBB en `percepcioniibb` y conservar `idprovinciaiibb`; dejar para verificar cualquier total genérico de otros tributos hasta clasificarlo explícitamente como no gravado, exento, percepción de IIBB u otra percepción.
+- Deduplicar al preparar el borrador y repetir la comprobación inmediatamente antes de escribir.
 - Si `compra.search` devuelve 50 filas, tratar el resultado como potencialmente truncado y subdividir el rango de fechas.
 - En compras, usar fechas ISO `YYYY-MM-DD` en `fecha` y `fechaiva`.
 - Mantener positivas las notas de crédito de compra y representar su naturaleza con `fcncnd` y `tipocomprobante`.
+- Verificar después de crear: identidad del comprobante, proveedor, fecha persistida, todas las alícuotas, percepción de IIBB, total redondeado a centavos, presencia en el período y estado activo.
 
 ## Modo terminal manual
 
