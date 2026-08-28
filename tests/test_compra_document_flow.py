@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -190,6 +191,101 @@ def test_compra_parser_requires_explicit_classification_for_generic_other_taxes(
     assert corrected_issues == []
     assert corrected["amounts"]["nogravado"] == sos_api.Decimal("10.00")
     assert "otros" not in corrected["amounts"]
+
+
+def test_compra_parser_blocks_unreviewed_structured_extraction_conflict(sos_api):
+    source = {
+        "lines": sos_api.clean_text_lines(mixed_rate_text()),
+        "warnings": [],
+        "capabilities": [],
+    }
+
+    fields, issues = sos_api.build_compra_source_fields(
+        source,
+        work_cuit="30000000000",
+        overrides={"numero": 78},
+    )
+
+    assert fields["numero"] == 78
+    assert fields["extraction_conflicts"] == [
+        {
+            "field": "numero",
+            "label": "número",
+            "automatic_value": "77",
+            "structured_value": "78",
+            "reviewed": False,
+        }
+    ]
+    assert any("_reviewed_conflicts" in issue for issue in issues)
+
+
+def test_compra_parser_accepts_only_explicitly_reviewed_conflict(sos_api):
+    source = {
+        "lines": sos_api.clean_text_lines(mixed_rate_text()),
+        "warnings": [],
+        "capabilities": [],
+    }
+
+    fields, issues = sos_api.build_compra_source_fields(
+        source,
+        work_cuit="30000000000",
+        overrides={"numero": 78, "_reviewed_conflicts": ["numero"]},
+    )
+
+    assert issues == []
+    assert fields["numero"] == 78
+    assert fields["extraction_conflicts"][0]["reviewed"] is True
+
+
+def test_compra_draft_blocks_body_when_extractions_disagree(tmp_path, sos_api, monkeypatch):
+    source_path = tmp_path / "factura-demo.txt"
+    source_path.write_text(mixed_rate_text(), encoding="utf-8")
+    bound_client = SimpleNamespace()
+    monkeypatch.setattr(sos_api, "ensure_bound_client", lambda *args, **kwargs: bound_client)
+    monkeypatch.setattr(
+        sos_api,
+        "resolve_cliente_match",
+        lambda *args, **kwargs: {
+            "id": 7001,
+            "clipro": "ACME Demo S.A.",
+            "cuit": "30000000015",
+            "idprovincia": 19,
+        },
+    )
+    monkeypatch.setattr(
+        sos_api,
+        "fetch_recent_supplier_purchase_details",
+        lambda *args, **kwargs: [matching_detail(compra_id=800)],
+    )
+    monkeypatch.setattr(sos_api, "find_compra_duplicate", lambda *args, **kwargs: None)
+
+    draft = sos_api.build_compra_document_draft(
+        make_args(
+            source=[str(source_path)],
+            document_json=[json.dumps({"numero": 78})],
+            cuit_trabajo="30000000000",
+        ),
+        sos_api.SOSContadorClient(),
+    )
+
+    row = draft["rows"][0]
+    assert row["status"] == "verificar"
+    assert row["body"] is None
+    assert "extracción automática" in row["reason"]
+
+
+def test_compra_override_rejects_unknown_reviewed_conflict(sos_api):
+    args = make_args(
+        source=["factura-demo.txt"],
+        document_json=[json.dumps({"_reviewed_conflicts": ["todos"]})],
+    )
+
+    try:
+        sos_api.load_compra_document_overrides(args, 1)
+    except sos_api.CLIError as exc:
+        assert "campos no comparables" in str(exc)
+    else:
+        raise AssertionError("Se esperaba CLIError para un campo de conflicto desconocido")
 
 
 def test_compra_preview_exposes_all_tax_components(sos_api):

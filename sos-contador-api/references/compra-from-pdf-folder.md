@@ -35,6 +35,27 @@ Se pueden pasar varios `--source`, pero cada uno produce un candidato independie
 
 ## Extracción mínima
 
+Aplicar esta jerarquía:
+
+1. Extraer primero el texto digital embebido cuando el PDF lo contenga.
+2. Para imágenes o escaneos, si el agente dispone de visión, producir una lectura estructurada y pasarla mediante `--document-json` o `--document-file`.
+3. Ejecutar OCR local como contraste independiente cuando esté disponible. Tesseract prioriza español (`spa`) y utiliza inglés (`eng`) únicamente como fallback cuando español no está instalado.
+4. Aplicar validaciones determinísticas de CUIT, identidad, alícuotas, sumas y total antes de construir el payload.
+
+Si el agente no dispone de visión, el OCR puede ser la fuente primaria, pero no reemplaza las validaciones ni la revisión del borrador. Si no existe ninguna extracción confiable, detenerse y corregir la configuración; no completar campos fiscales por inferencia a partir de una lectura incompleta.
+
+Cuando la extracción automática y la lectura estructurada difieren en un campo fiscal, el borrador queda en `verificar` y conserva ambos valores. Revisar el comprobante original y volver a preparar el borrador declarando únicamente los campos resueltos:
+
+```json
+{
+  "numero": 78,
+  "total": 357.00,
+  "_reviewed_conflicts": ["numero"]
+}
+```
+
+`_reviewed_conflicts` no acepta una confirmación global ni campos desconocidos. Incluir un campo solo después de haber decidido su valor contra la fuente original. Las discrepancias revisadas permanecen como advertencia trazable en el borrador.
+
 Por comprobante, extraer:
 
 - fecha
