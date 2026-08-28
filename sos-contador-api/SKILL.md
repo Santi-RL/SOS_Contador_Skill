@@ -90,7 +90,9 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 
 - Para “Mis Comprobantes Recibidos/Emitidos”, leer [references/mis-comprobantes-afip.md](references/mis-comprobantes-afip.md).
 - Para compras desde PDF o imágenes, leer [references/compra-from-pdf-folder.md](references/compra-from-pdf-folder.md).
-- Para OCR, usar español (`spa`) por defecto y recurrir a inglés (`eng`) solo cuando español no esté disponible. Si faltan ambos idiomas, detener la extracción y reportar la configuración requerida; no inferir datos fiscales desde una lectura parcial.
+- Priorizar, en este orden, texto digital embebido, lectura visual estructurada cuando el agente disponga de visión y OCR local como contraste. Si no hay visión disponible, permitir OCR como fuente primaria sujeto a todas las validaciones determinísticas y a la revisión del borrador.
+- Para OCR, usar español (`spa`) por defecto y recurrir a inglés (`eng`) solo cuando español no esté disponible. Si faltan ambos idiomas y tampoco existe otra extracción confiable, detener la extracción y reportar la configuración requerida; no inferir datos fiscales desde una lectura parcial.
+- Cuando una lectura estructurada y la extracción automática informen valores distintos para identidad, CUIT, fecha o importes, dejar el candidato en `verificar`. Resolver cada discrepancia contra el comprobante y declarar solo esos campos en `_reviewed_conflicts`; no aceptar conflictos en bloque.
 - En compras documentales, tratar cada `--source` como un comprobante independiente. No fusionar archivos salvo que sean páginas o vistas complementarias del mismo documento.
 - Crear primero `compra draft --source <archivo> --cuit-trabajo <cuit> --preview-format markdown`; mostrar el borrador y esperar el OK explícito.
 - Ejecutar después `compra create --draft-id <id> --confirm`. El comando debe usar sin modificaciones el payload y `uniqueid` congelados en el borrador aprobado.

@@ -7020,6 +7020,44 @@ COMPRA_AMOUNT_KEYS = (
     "total",
 )
 COMPRA_DISCOUNT_KEYS = ("descuento_0", "descuento_10_5", "descuento_21", "descuento_27", "descuento_global")
+COMPRA_EXTRACTION_COMPARISON_KEYS = (
+    "fecha",
+    "proveedor_cuit",
+    "fcncnd",
+    "letra",
+    "puntoventa",
+    "numero",
+    *COMPRA_AMOUNT_KEYS,
+    *COMPRA_DISCOUNT_KEYS,
+    "neto_gravado_total",
+)
+COMPRA_EXTRACTION_FIELD_LABELS = {
+    "fecha": "fecha",
+    "proveedor_cuit": "CUIT del proveedor",
+    "fcncnd": "tipo de comprobante",
+    "letra": "letra",
+    "puntoventa": "punto de venta",
+    "numero": "número",
+    "neto_0": "neto 0 %",
+    "neto_10_5": "neto 10,5 %",
+    "neto_21": "neto 21 %",
+    "neto_27": "neto 27 %",
+    "iva_0": "IVA 0 %",
+    "iva_10_5": "IVA 10,5 %",
+    "iva_21": "IVA 21 %",
+    "iva_27": "IVA 27 %",
+    "nogravado": "no gravado",
+    "exento": "exento",
+    "percepcion_iibb": "percepción de IIBB",
+    "otros": "otros tributos",
+    "total": "total",
+    "descuento_0": "descuento 0 %",
+    "descuento_10_5": "descuento 10,5 %",
+    "descuento_21": "descuento 21 %",
+    "descuento_27": "descuento 27 %",
+    "descuento_global": "descuento global",
+    "neto_gravado_total": "neto gravado total",
+}
 
 
 def extract_compra_line_amount(line: str) -> Decimal | None:
@@ -7200,6 +7238,72 @@ def normalize_compra_amounts(raw_fields: dict[str, Any]) -> tuple[dict[str, Deci
     return amounts, warnings
 
 
+def normalize_compra_extraction_value(key: str, value: Any) -> Any:
+    if key in {*COMPRA_AMOUNT_KEYS, *COMPRA_DISCOUNT_KEYS, "neto_gravado_total"}:
+        try:
+            return quantize_money(smart_decimal_from_text(value))
+        except CLIError:
+            return str(value).strip()
+    if key == "fecha":
+        try:
+            return extract_compra_document_date([], value)
+        except CLIError:
+            return str(value).strip()
+    if key == "proveedor_cuit":
+        return digits_only(str(value))
+    if key in {"puntoventa", "numero"}:
+        return int(digits_only(str(value)) or "0")
+    if key in {"fcncnd", "letra"}:
+        return str(value).strip().upper()
+    return str(value).strip()
+
+
+def reviewed_compra_extraction_conflicts(overrides: dict[str, Any]) -> set[str]:
+    raw_reviewed = overrides.get("_reviewed_conflicts", [])
+    if raw_reviewed in (None, ""):
+        return set()
+    if not isinstance(raw_reviewed, list) or any(not isinstance(item, str) for item in raw_reviewed):
+        raise CLIError("_reviewed_conflicts debe ser una lista de nombres de campos.")
+    reviewed = {item.strip() for item in raw_reviewed if item.strip()}
+    unknown = sorted(reviewed.difference(COMPRA_EXTRACTION_COMPARISON_KEYS))
+    if unknown:
+        raise CLIError(
+            "_reviewed_conflicts contiene campos no comparables: " + ", ".join(unknown)
+        )
+    return reviewed
+
+
+def compare_compra_extractions(
+    extracted_fields: dict[str, Any],
+    structured_fields: dict[str, Any],
+) -> list[dict[str, Any]]:
+    reviewed = reviewed_compra_extraction_conflicts(structured_fields)
+    conflicts: list[dict[str, Any]] = []
+    for key in COMPRA_EXTRACTION_COMPARISON_KEYS:
+        extracted_value = extracted_fields.get(key)
+        structured_value = structured_fields.get(key)
+        if extracted_value in (None, "") or structured_value in (None, ""):
+            continue
+        normalized_extracted = normalize_compra_extraction_value(key, extracted_value)
+        normalized_structured = normalize_compra_extraction_value(key, structured_value)
+        if normalized_extracted == normalized_structured:
+            continue
+        conflicts.append(
+            {
+                "field": key,
+                "label": COMPRA_EXTRACTION_FIELD_LABELS.get(key, key),
+                "automatic_value": format_decimal_string(normalized_extracted)
+                if isinstance(normalized_extracted, Decimal)
+                else str(normalized_extracted),
+                "structured_value": format_decimal_string(normalized_structured)
+                if isinstance(normalized_structured, Decimal)
+                else str(normalized_structured),
+                "reviewed": key in reviewed,
+            }
+        )
+    return conflicts
+
+
 def load_compra_document_overrides(args: argparse.Namespace, source_count: int) -> list[dict[str, Any]]:
     if (getattr(args, "document_json", None) or []) and (getattr(args, "document_file", None) or []):
         raise CLIError("Use --document-json o --document-file, no ambas opciones.")
@@ -7217,7 +7321,10 @@ def load_compra_document_overrides(args: argparse.Namespace, source_count: int) 
         raise CLIError("Debe indicar un --document-json/--document-file por cada --source.")
     if not all(isinstance(item, dict) for item in raw_items):
         raise CLIError("Cada corrección documental debe ser un objeto JSON.")
-    return [dict(item) for item in raw_items]
+    overrides = [dict(item) for item in raw_items]
+    for item in overrides:
+        reviewed_compra_extraction_conflicts(item)
+    return overrides
 
 
 def build_compra_source_fields(
@@ -7235,10 +7342,23 @@ def build_compra_source_fields(
         "fecha": extract_compra_document_date(lines),
         **extracted_amounts,
     }
-    counterparty_cuits = collect_counterparty_cuits(lines, work_cuit=work_cuit, explicit_cuit=overrides.get("proveedor_cuit"))
+    counterparty_cuits = collect_counterparty_cuits(lines, work_cuit=work_cuit, explicit_cuit=None)
     if len(counterparty_cuits) == 1:
         raw_fields["proveedor_cuit"] = counterparty_cuits[0]
+    extraction_conflicts = compare_compra_extractions(raw_fields, overrides)
+    unreviewed_conflicts = [item for item in extraction_conflicts if not item["reviewed"]]
+    if unreviewed_conflicts:
+        details = "; ".join(
+            f"{item['label']} (automática={item['automatic_value']}; estructurada={item['structured_value']})"
+            for item in unreviewed_conflicts
+        )
+        issues.append(
+            "La extracción automática y la lectura estructurada discrepan en: "
+            f"{details}. Revise el comprobante y declare únicamente los campos resueltos en _reviewed_conflicts."
+        )
     raw_fields.update({key: value for key, value in overrides.items() if value not in (None, "")})
+    raw_fields.pop("_reviewed_conflicts", None)
+    raw_fields["extraction_conflicts"] = extraction_conflicts
     if decimal_or_zero(extracted_amounts.get("otros")):
         tax_override_keys = ("nogravado", "exento", "percepcion_iibb", "otros")
         has_explicit_tax_classification = any(
@@ -7556,6 +7676,15 @@ def build_compra_document_draft(args: argparse.Namespace, client: SOSContadorCli
             overrides=document_overrides,
         )
         warnings = [*extracted.get("warnings", []), *extracted.get("capabilities", [])]
+        reviewed_conflicts = [
+            item for item in fields.get("extraction_conflicts", []) if item.get("reviewed")
+        ]
+        if reviewed_conflicts:
+            warnings.append(
+                "Discrepancias de extracción revisadas explícitamente: "
+                + ", ".join(str(item.get("label") or item.get("field")) for item in reviewed_conflicts)
+                + "."
+            )
         proveedor_cuit = digits_only(str(fields.get("proveedor_cuit") or ""))
         provider: dict[str, Any] | None = None
         if proveedor_cuit:
