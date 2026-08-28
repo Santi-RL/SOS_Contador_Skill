@@ -107,7 +107,7 @@ Reglas para descuentos:
 - si el neto gravado impreso ya refleja el descuento, usar ese neto final y mantener `descuento=0` para evitar duplicarlo;
 - si existe un descuento global que no puede distribuirse con evidencia entre varias alícuotas, marcar el candidato para verificar.
 
-Una percepción identificada como IIBB se registra con identificador `percepcioniibb` y conserva `idprovinciaiibb`. Un renglón genérico de “otros tributos” no se clasifica automáticamente como IIBB. Cuando ambos renglones repiten el mismo importe, no sumarlos dos veces.
+Una percepción identificada como IIBB se registra con identificador `percepcioniibb` y conserva `idprovinciaiibb`. Un renglón genérico de “otros tributos” no se clasifica automáticamente: el borrador debe quedar para verificar hasta que se indique explícitamente si corresponde a no gravado, exento, percepción de IIBB u otra percepción. Cuando dos renglones repiten el mismo importe agregado, no sumarlos dos veces.
 
 ## Deduplicación
 

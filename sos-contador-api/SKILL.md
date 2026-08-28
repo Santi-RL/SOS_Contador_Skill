@@ -98,7 +98,7 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 - Antes de crear un proveedor o elegir una imputación, buscar el maestro por CUIT válido y revisar compras activas anteriores del mismo proveedor cuando existan.
 - Reutilizar cuenta, centro de costo y tratamiento impositivo solo desde antecedentes comercialmente análogos; no copiar fechas, numeración ni importes.
 - Separar neto e IVA por alícuota. Si el comprobante informa descuentos por alícuota, aplicarlos al neto correspondiente antes de armar las imputaciones; no volver a cargarlos en `descuento` cuando el neto impreso ya es final.
-- Registrar una percepción provincial identificada como IIBB en `percepcioniibb` y conservar `idprovinciaiibb`; no clasificar automáticamente otros tributos genéricos como IIBB.
+- Registrar una percepción provincial identificada como IIBB en `percepcioniibb` y conservar `idprovinciaiibb`; dejar para verificar cualquier total genérico de otros tributos hasta clasificarlo explícitamente como no gravado, exento, percepción de IIBB u otra percepción.
 - Deduplicar al preparar el borrador y repetir la comprobación inmediatamente antes de escribir.
 - Si `compra.search` devuelve 50 filas, tratar el resultado como potencialmente truncado y subdividir el rango de fechas.
 - En compras, usar fechas ISO `YYYY-MM-DD` en `fecha` y `fechaiva`.

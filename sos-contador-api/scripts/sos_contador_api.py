@@ -7189,15 +7189,29 @@ def build_compra_source_fields(
     lines = extracted_source.get("lines", [])
     issues: list[str] = []
     identity = extract_compra_document_identity(lines)
+    extracted_amounts = extract_compra_document_amounts(lines)
     raw_fields: dict[str, Any] = {
         **identity,
         "fecha": extract_compra_document_date(lines),
-        **extract_compra_document_amounts(lines),
+        **extracted_amounts,
     }
     counterparty_cuits = collect_counterparty_cuits(lines, work_cuit=work_cuit, explicit_cuit=overrides.get("proveedor_cuit"))
     if len(counterparty_cuits) == 1:
         raw_fields["proveedor_cuit"] = counterparty_cuits[0]
     raw_fields.update({key: value for key, value in overrides.items() if value not in (None, "")})
+    if decimal_or_zero(extracted_amounts.get("otros")):
+        tax_override_keys = ("nogravado", "exento", "percepcion_iibb", "otros")
+        has_explicit_tax_classification = any(
+            key in overrides and overrides.get(key) not in (None, "")
+            for key in tax_override_keys
+        )
+        if has_explicit_tax_classification:
+            if "otros" not in overrides:
+                raw_fields.pop("otros", None)
+        else:
+            issues.append(
+                "El comprobante informa otros tributos sin clasificación. Indique explícitamente si corresponden a no gravado, exento, percepción de IIBB u otra percepción."
+            )
     if raw_fields.get("fecha"):
         raw_fields["fecha"] = extract_compra_document_date(lines, raw_fields.get("fecha"))
     if raw_fields.get("proveedor_cuit"):
@@ -7282,11 +7296,20 @@ def compra_row_is_active(row: dict[str, Any]) -> bool:
     return not bool(str(row.get("fechabaja") or row.get("fecha_baja") or "").strip())
 
 
-def compra_summary_matches_expected(summary: dict[str, Any], expected: dict[str, Any]) -> bool:
+def compra_summary_matches_expected(
+    summary: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    fcncnd: Any = None,
+) -> bool:
+    credit_note = str(fcncnd or "").strip().upper() == "C"
     for key in COMPRA_AMOUNT_KEYS:
         if key not in expected:
             continue
-        if quantize_money(summary.get(key)) != quantize_money(expected.get(key)):
+        actual_value = quantize_money(summary.get(key))
+        if credit_note:
+            actual_value = abs(actual_value)
+        if actual_value != quantize_money(expected.get(key)):
             return False
     return True
 
@@ -7319,7 +7342,14 @@ def find_compra_duplicate(
         summary = summarize_compra_detail_for_afip(detail)
         active = compra_row_is_active(row)
         return {
-            "kind": "exact" if active and compra_summary_matches_expected(summary, fields.get("amounts", {})) else "identity_conflict",
+            "kind": "exact"
+            if active
+            and compra_summary_matches_expected(
+                summary,
+                fields.get("amounts", {}),
+                fcncnd=fields.get("fcncnd"),
+            )
+            else "identity_conflict",
             "id": row_id,
             "active": active,
             "summary": summary,
@@ -7620,9 +7650,17 @@ def build_compra_draft_preview(draft: dict[str, Any]) -> dict[str, Any]:
                 "Fecha": fields.get("fecha"),
                 "Comprobante": row.get("documento"),
                 "Proveedor": fields.get("proveedor_nombre"),
+                "Neto 0 %": amounts.get("neto_0"),
                 "Neto 10,5 %": amounts.get("neto_10_5"),
                 "Neto 21 %": amounts.get("neto_21"),
+                "Neto 27 %": amounts.get("neto_27"),
+                "IVA 10,5 %": amounts.get("iva_10_5"),
+                "IVA 21 %": amounts.get("iva_21"),
+                "IVA 27 %": amounts.get("iva_27"),
+                "No gravado": amounts.get("nogravado"),
+                "Exento": amounts.get("exento"),
                 "Percepción IIBB": amounts.get("percepcion_iibb"),
+                "Otros tributos": amounts.get("otros"),
                 "Total": amounts.get("total"),
                 "Cuenta": fields.get("cuenta_nombre") or fields.get("idcuenta"),
                 "Centro de costo": fields.get("centrocosto_nombre") or fields.get("idcentrocosto"),
@@ -7724,7 +7762,11 @@ def verify_created_compra(
     for key in ("idcuenta", "idcentrocosto", "idprovinciaiibb"):
         if str(cabecera.get(key) or "") != str(fields.get(key) or ""):
             issues.append(f"{key}: esperado {fields.get(key)}, obtenido {cabecera.get(key)}")
-    if not compra_summary_matches_expected(summary, row.get("expected_amounts", {})):
+    if not compra_summary_matches_expected(
+        summary,
+        row.get("expected_amounts", {}),
+        fcncnd=fields.get("fcncnd"),
+    ):
         issues.append("Los importes o tratamientos impositivos persistidos no coinciden con el borrador.")
 
     rows, truncated = fetch_compra_items_complete(

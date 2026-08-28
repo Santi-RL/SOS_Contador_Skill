@@ -149,6 +149,94 @@ def test_compra_parser_marks_invalid_supplier_cuit_for_review(sos_api):
     assert any("dígito verificador correcto" in issue for issue in issues)
 
 
+def test_compra_parser_requires_explicit_classification_for_generic_other_taxes(sos_api):
+    source = {
+        "lines": sos_api.clean_text_lines(
+            "\n".join(
+                [
+                    "PROVEEDOR: Combustibles Demo S.A.",
+                    "C.U.I.T. 30-00000001-5",
+                    'TIQUE FACTURA "A" N° 00012-00000077',
+                    "Fecha 26/08/2026",
+                    "Comprador Empresa Demo S.R.L.",
+                    "C.U.I.T. 30-00000000-0",
+                    "SUBTOT. IMP. NETO GRAVADO 100,00",
+                    "ALICUOTA 21,00% 21,00",
+                    "IMPUESTO INTERNO 10,00",
+                    "IMPORTE TOTAL OTROS TRIBUTOS 10,00",
+                    "TOTAL 131,00",
+                ]
+            )
+        ),
+        "warnings": [],
+        "capabilities": [],
+    }
+
+    fields, issues = sos_api.build_compra_source_fields(
+        source,
+        work_cuit="30000000000",
+        overrides={},
+    )
+
+    assert fields["amounts"]["otros"] == sos_api.Decimal("10.00")
+    assert any("otros tributos sin clasificación" in issue for issue in issues)
+
+    corrected, corrected_issues = sos_api.build_compra_source_fields(
+        source,
+        work_cuit="30000000000",
+        overrides={"nogravado": "10.00"},
+    )
+
+    assert corrected_issues == []
+    assert corrected["amounts"]["nogravado"] == sos_api.Decimal("10.00")
+    assert "otros" not in corrected["amounts"]
+
+
+def test_compra_preview_exposes_all_tax_components(sos_api):
+    draft = {
+        "contexto": {"cuit_trabajo": {"cuit": "30000000000", "nombre": "Empresa Demo S.R.L."}},
+        "rows": [
+            {
+                "status": "pendiente",
+                "documento": "FA-0012-00000077",
+                "fields": {"fecha": "2026-08-26", "proveedor_nombre": "Combustibles Demo S.A."},
+                "expected_amounts": {
+                    "neto_21": "100.00",
+                    "iva_21": "21.00",
+                    "nogravado": "10.00",
+                    "otros": "0.00",
+                    "total": "131.00",
+                },
+                "reason": "",
+            }
+        ],
+        "stats": {"pendiente": 1, "ya_cargado": 0, "verificar": 0},
+        "validacion": {"warnings": []},
+    }
+
+    row = sos_api.build_compra_draft_preview(draft)["tablas"][0]["rows"][0]
+
+    assert row["IVA 21 %"] == "21.00"
+    assert row["No gravado"] == "10.00"
+    assert row["Otros tributos"] == "0.00"
+
+
+def test_compra_credit_note_comparison_keeps_document_amounts_positive(sos_api):
+    summary = {
+        "neto_21": "-100.00",
+        "iva_21": "-21.00",
+        "total": "-121.00",
+    }
+    expected = {
+        "neto_21": "100.00",
+        "iva_21": "21.00",
+        "total": "121.00",
+    }
+
+    assert sos_api.compra_summary_matches_expected(summary, expected, fcncnd="C")
+    assert not sos_api.compra_summary_matches_expected(summary, expected, fcncnd="F")
+
+
 def test_compra_draft_reuses_consistent_history_and_freezes_body(tmp_path, sos_api, monkeypatch):
     source_path = tmp_path / "factura-demo.txt"
     source_path.write_text(mixed_rate_text(), encoding="utf-8")
