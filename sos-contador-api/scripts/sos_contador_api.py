@@ -87,6 +87,8 @@ CUIT_CATALOG_MAX_AGE_SECONDS = 12 * 60 * 60
 DOCUMENT_CATALOG_MAX_AGE_SECONDS = 12 * 60 * 60
 DRAFT_TTL_SECONDS = 2 * 60 * 60
 OCR_ENV_VARS = ("SOS_CONTADOR_TESSERACT_CMD", "TESSERACT_CMD")
+OCR_PRIMARY_LANGUAGE = "spa"
+OCR_FALLBACK_LANGUAGE = "eng"
 CUIT_CHECK_WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 CUIT_ALLOWED_PREFIXES = {"20", "23", "24", "27", "30", "33", "34"}
 PROFILE_SCOPE_LINE = "line"
@@ -338,6 +340,46 @@ def ocr_is_available() -> bool:
         return False
     command = get_tesseract_command()
     return bool(command and (file_exists(command) or shutil.which(command)))
+
+
+def select_ocr_language(available_languages: Iterable[str]) -> str:
+    available = {str(language).strip().lower() for language in available_languages if str(language).strip()}
+    if OCR_PRIMARY_LANGUAGE in available:
+        return OCR_PRIMARY_LANGUAGE
+    if OCR_FALLBACK_LANGUAGE in available:
+        return OCR_FALLBACK_LANGUAGE
+    raise CLIError(
+        "Tesseract no tiene datos de idioma compatibles. "
+        "Instale 'spa' para OCR en español; 'eng' se admite únicamente como fallback. "
+        "Si los datos ya están instalados, revise TESSDATA_PREFIX."
+    )
+
+
+def get_ocr_language() -> str:
+    if pytesseract is None or Image is None:
+        raise CLIError("Faltan dependencias para OCR.")
+    if not ocr_is_available():
+        raise CLIError(
+            "No se encontró Tesseract. Instálelo o configure SOS_CONTADOR_TESSERACT_CMD."
+        )
+    try:
+        available_languages = pytesseract.get_languages(config="")
+    except Exception as exc:
+        raise CLIError(
+            "No se pudieron consultar los idiomas de Tesseract. "
+            "Revise la instalación y TESSDATA_PREFIX."
+        ) from exc
+    return select_ocr_language(available_languages)
+
+
+def image_to_ocr_text(image: Any, *, language: str) -> str:
+    try:
+        return pytesseract.image_to_string(image, lang=language)
+    except Exception as exc:
+        raise CLIError(
+            f"Tesseract no pudo procesar el documento con el idioma '{language}'. "
+            "Revise la instalación y TESSDATA_PREFIX."
+        ) from exc
 
 
 def ensure_bound_client(client: SOSContadorClient, *, cuit: str | None = None, cuit_id: str | None = None) -> SOSContadorClient:
@@ -2708,24 +2750,22 @@ def read_pdf_text(path: Path) -> str:
 def read_pdf_via_ocr(path: Path) -> str:
     if fitz is None:
         raise CLIError("Falta PyMuPDF para OCR de PDFs escaneados.")
-    if not ocr_is_available():
-        raise CLIError("OCR no disponible para PDFs escaneados.")
+    language = get_ocr_language()
     parts: list[str] = []
     with fitz.open(path) as document:
         for page in document:
             pix = page.get_pixmap(dpi=200)
-            image = Image.open(io.BytesIO(pix.tobytes("png")))
-            parts.append(pytesseract.image_to_string(image, lang="spa+eng"))
+            with Image.open(io.BytesIO(pix.tobytes("png"))) as image:
+                parts.append(image_to_ocr_text(image, language=language))
     return "\n".join(parts)
 
 
 def read_image_via_ocr(path: Path) -> str:
     if Image is None or pytesseract is None:
         raise CLIError("Faltan dependencias para OCR de imágenes.")
-    if not ocr_is_available():
-        raise CLIError("OCR no disponible para imágenes.")
+    language = get_ocr_language()
     with Image.open(path) as image:
-        return pytesseract.image_to_string(image, lang="spa+eng")
+        return image_to_ocr_text(image, language=language)
 
 
 def extract_source_document(path: Path) -> dict[str, Any]:

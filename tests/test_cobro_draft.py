@@ -87,6 +87,46 @@ def test_extract_image_without_ocr_reports_capability(tmp_path, sos_api, monkeyp
     assert result["capabilities"]
 
 
+def test_ocr_language_prefers_spanish_over_english(sos_api):
+    assert sos_api.select_ocr_language(["eng", "spa", "osd"]) == "spa"
+
+
+def test_ocr_language_uses_english_only_when_spanish_is_unavailable(sos_api):
+    assert sos_api.select_ocr_language(["eng", "osd"]) == "eng"
+
+
+def test_get_ocr_language_queries_installed_languages(sos_api, monkeypatch):
+    monkeypatch.setattr(sos_api, "ocr_is_available", lambda: True)
+    monkeypatch.setattr(sos_api.pytesseract, "get_languages", lambda config: ["eng", "spa"])
+
+    assert sos_api.get_ocr_language() == "spa"
+
+
+def test_ocr_language_rejects_installation_without_supported_language(sos_api):
+    try:
+        sos_api.select_ocr_language(["osd"])
+    except sos_api.CLIError as exc:
+        assert "Instale 'spa'" in str(exc)
+        assert "'eng' se admite únicamente como fallback" in str(exc)
+    else:
+        raise AssertionError("Se esperaba CLIError sin datos OCR compatibles")
+
+
+def test_read_image_uses_selected_spanish_language(tmp_path, sos_api, monkeypatch):
+    image_path = tmp_path / "comprobante-demo.png"
+    Image.new("RGB", (200, 60), color="white").save(image_path)
+    calls = []
+    monkeypatch.setattr(sos_api, "get_ocr_language", lambda: "spa")
+    monkeypatch.setattr(
+        sos_api.pytesseract,
+        "image_to_string",
+        lambda image, lang: calls.append(lang) or "Factura demo",
+    )
+
+    assert sos_api.read_image_via_ocr(image_path) == "Factura demo"
+    assert calls == ["spa"]
+
+
 def test_build_cobro_draft_without_work_cuit_does_not_assume_context(tmp_path, sos_api):
     txt_path = tmp_path / "recibo.txt"
     txt_path.write_text(

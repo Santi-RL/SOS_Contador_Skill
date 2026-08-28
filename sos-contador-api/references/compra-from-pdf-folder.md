@@ -35,6 +35,8 @@ Se pueden pasar varios `--source`, pero cada uno produce un candidato independie
 
 ## Extracción mínima
 
+El OCR prioriza el modelo español de Tesseract (`spa`). El modelo inglés (`eng`) se utiliza únicamente como fallback cuando español no está instalado. Si ninguno está disponible, detener la extracción y corregir la configuración de Tesseract o `TESSDATA_PREFIX`; no completar campos fiscales por inferencia a partir de una lectura incompleta.
+
 Por comprobante, extraer:
 
 - fecha

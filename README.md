@@ -20,6 +20,8 @@ El flujo principal es independiente del proveedor del agente: cualquier agente c
 python -m pip install -r .\sos-contador-api\requirements.txt
 ```
 
+Para procesar imágenes o PDFs escaneados, instalar también Tesseract con los datos de idioma español (`spa`). La skill prioriza español y usa inglés (`eng`) únicamente cuando `spa` no está disponible. Verificar los idiomas instalados con `tesseract --list-langs`; si Tesseract o sus datos están fuera de las rutas predeterminadas, configurar `SOS_CONTADOR_TESSERACT_CMD` y `TESSDATA_PREFIX`.
+
 3. Crear el hogar operativo privado. De forma predeterminada se usa `~/.sos-contador`.
 4. Copiar `sos-contador-api/.env.local.example` como `~/.sos-contador/.env.local` y completar las credenciales propias.
 5. Si se necesita otra ubicación, definir `SOS_CONTADOR_HOME` con una ruta privada absoluta.
