@@ -24,6 +24,8 @@ python scripts/sos_contador_api.py auth resolve-cuit --name "empresa demo"
 
 La configuración estándar se carga desde variables de entorno o `~/.sos-contador/.env.local`. Permitir otra ubicación mediante `SOS_CONTADOR_HOME`. No volver a pedir credenciales si el archivo privado existe.
 
+Si existe `<SOS_CONTADOR_HOME>/local/INSTRUCCIONES.md`, leer sus preferencias generales de acceso y trabajo antes de pedir intervención. Respetar las autorizaciones expresas vigentes sin ampliarlas; ver [references/safety-and-storage.md](references/safety-and-storage.md). Los criterios de cada empresa siguen en su entrada de `local/taxpayers/`.
+
 ## Helpers especializados
 
 Usar estos comandos para los flujos ya validados:

@@ -66,6 +66,8 @@ Mantener `.env.local`, cachés, tokens y cookies bajo el hogar operativo privado
 
 El CLI debe redactar claves con semántica de contraseña, secreto o token. Las operaciones internas `auth.login` y `cuit.credentials` no se invocan mediante `api invoke`; usar los helpers de autenticación para evitar exponer los JWT.
 
+Si el usuario ya autorizó iniciar o renovar sesión, no pedir la misma autorización porque venció el acceso. Cuando el fallback web esté autorizado y el formulario legítimo tenga las credenciales cargadas, accionar **Ingresar** sin leer ni copiar la contraseña y comprobar después la sesión y el contribuyente seleccionado. Pedir intervención solo ante una credencial realmente faltante, una verificación personal o un error de acceso que no pueda resolverse dentro del alcance autorizado. El permiso de autenticación no autoriza registraciones, pagos, presentaciones ni cambios de seguridad.
+
 ## Exportaciones
 
 Respetar primero la ruta o directorio privado indicado por el usuario. No sobrescribir archivos ajenos a la modificación autorizada, no colocar datos reales en un repositorio público ni crear una copia adicional solo para imponer la estructura predeterminada.

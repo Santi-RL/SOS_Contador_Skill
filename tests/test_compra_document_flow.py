@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 def make_args(**overrides):
     defaults = {
@@ -333,7 +335,18 @@ def test_compra_credit_note_comparison_keeps_document_amounts_positive(sos_api):
     assert not sos_api.compra_summary_matches_expected(summary, expected, fcncnd="F")
 
 
-def test_compra_draft_reuses_consistent_history_and_freezes_body(tmp_path, sos_api, monkeypatch):
+@pytest.mark.parametrize(
+    "overrides,account_id,center_id,account_label,center_label",
+    [
+        ({}, 8100, 8200, "Gastos de comercialización", "General"),
+        ({"idcuenta": "8100", "idcentrocosto": 8200}, 8100, 8200, "Gastos de comercialización", "General"),
+        ({"idcuenta": 8300}, 8300, 8200, "8300", "General"),
+        ({"idcentrocosto": "8400"}, 8100, 8400, "Gastos de comercialización", "8400"),
+    ],
+)
+def test_compra_draft_reuses_consistent_history_and_freezes_body(
+    tmp_path, sos_api, monkeypatch, overrides, account_id, center_id, account_label, center_label
+):
     source_path = tmp_path / "factura-demo.txt"
     source_path.write_text(mixed_rate_text(), encoding="utf-8")
     bound_client = SimpleNamespace()
@@ -356,7 +369,11 @@ def test_compra_draft_reuses_consistent_history_and_freezes_body(tmp_path, sos_a
     monkeypatch.setattr(sos_api, "find_compra_duplicate", lambda *args, **kwargs: None)
 
     draft = sos_api.build_compra_document_draft(
-        make_args(source=[str(source_path)], cuit_trabajo="30000000000"),
+        make_args(
+            source=[str(source_path)],
+            cuit_trabajo="30000000000",
+            document_json=[json.dumps(overrides)],
+        ),
         sos_api.SOSContadorClient(),
     )
 
@@ -367,9 +384,12 @@ def test_compra_draft_reuses_consistent_history_and_freezes_body(tmp_path, sos_a
     assert body["fecha"] == "2026-02-03"
     assert body["fechaiva"] == "2026-02-03"
     assert body["idclipro"] == 7001
-    assert body["idcentrocosto"] == 8200
+    assert body["idcentrocosto"] == center_id
     assert body["idprovinciaiibb"] == 19
-    assert body["imputaciones"][0]["cuid"] == 8100
+    assert body["imputaciones"][0]["cuid"] == account_id
+    preview = sos_api.build_compra_draft_preview(draft)["tablas"][0]["rows"][0]
+    assert preview["Cuenta"] == account_label
+    assert preview["Centro de costo"] == center_label
     assert body["referencia"] == "factura-demo.txt"
     assert len(body["uniqueid"]) == 36
     assert body["imputaciones"][0]["imputa"] == [
@@ -377,6 +397,24 @@ def test_compra_draft_reuses_consistent_history_and_freezes_body(tmp_path, sos_a
         {"i": "neto", "a": 10.5, "v": 200.0},
         {"i": "percepcioniibb", "a": 0.0, "v": 15.0},
     ]
+
+
+@pytest.mark.parametrize("zero", [0, 0.0, "0.00"])
+def test_compra_structured_zero_is_an_amount_not_a_missing_value(sos_api, zero):
+    source = {"lines": sos_api.clean_text_lines(mixed_rate_text())}
+    fields, issues = sos_api.build_compra_source_fields(
+        source, work_cuit="30000000000", overrides={"otros": zero}
+    )
+
+    assert issues == []
+    assert fields["amounts"]["otros"] == sos_api.Decimal("0.00")
+    assert fields["amounts"]["total"] == sos_api.Decimal("357.00")
+
+
+@pytest.mark.parametrize("missing", [None, "", " "])
+def test_missing_amount_is_not_silently_replaced_with_zero(sos_api, missing):
+    with pytest.raises(sos_api.CLIError, match="Monto vacio"):
+        sos_api.smart_decimal_from_text(missing)
 
 
 def test_compra_duplicate_distinguishes_exact_and_conflicting_amounts(sos_api, monkeypatch):

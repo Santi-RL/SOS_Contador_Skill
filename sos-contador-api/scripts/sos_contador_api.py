@@ -533,7 +533,7 @@ def normalize_search_text(value: str | None) -> str:
 
 
 def smart_decimal_from_text(value: Any) -> Decimal:
-    text = str(value or "").strip()
+    text = str("" if value is None else value).strip()
     if not text:
         raise CLIError("Monto vacio.")
     cleaned = re.sub(r"[^\d,.\-]", "", text)
@@ -7726,8 +7726,16 @@ def build_compra_document_draft(args: argparse.Namespace, client: SOSContadorCli
             provider_province = find_value(provider, ("idprovincia", "idprovinciaiibb"))
             if provider_province not in (None, ""):
                 fields["idprovinciaiibb"] = str(provider_province)
-        fields["cuenta_nombre"] = defaults.get("cuenta_nombre")
-        fields["centrocosto_nombre"] = defaults.get("centrocosto_nombre")
+        # A historical label describes its own ID, not an explicit replacement.
+        for id_key, name_key in (
+            ("idcuenta", "cuenta_nombre"),
+            ("idcentrocosto", "centrocosto_nombre"),
+        ):
+            fields[name_key] = (
+                defaults.get(name_key)
+                if fields.get(id_key) and str(fields[id_key]) == str(defaults.get(id_key))
+                else None
+            )
         fields["antecedente_id"] = defaults.get("antecedente_id")
         fields["referencia"] = str(document_overrides.get("referencia") or source_path.name)
         fields["memo"] = str(document_overrides.get("memo") or "")

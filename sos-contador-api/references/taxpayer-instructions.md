@@ -4,6 +4,8 @@ Usar cuando se inicia una operación con una empresa conocida o cuando el usuari
 
 ## Localización y carga
 
+Las preferencias generales expresas del usuario, como el alcance de una autorización de acceso, pueden mantenerse en `<SOS_CONTADOR_HOME>/local/INSTRUCCIONES.md`. Leerlo si existe; no crear un archivo vacío ni guardar credenciales allí. Mantener los criterios particulares en la entrada de cada empresa, con un enlace al archivo general cuando ayude a descubrirlo. Una autorización permanente debe ser expresa y conservar su alcance, nunca inferirse de una aprobación puntual.
+
 Después de resolver el contribuyente con el catálogo, localizar:
 
 ```text

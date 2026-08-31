@@ -69,9 +69,13 @@ Por comprobante, extraer:
 
 La fecha extraída de una línea rotulada como `Fecha` tiene prioridad sobre fechas accesorias como inicio de actividades. El body de la API siempre usa `YYYY-MM-DD` en `fecha` y `fechaiva`.
 
+Conservar el código fiscal de origen además de `fcncnd` y letra. Para tique factura A (`081`), verificar primero la configuración del proveedor por PV según [capabilities-and-verification.md](capabilities-and-verification.md). Con esa configuración se comprobó una carga mediante el helper que conserva `081` en el Libro IVA, aunque su body no transporte un campo de subtipo. Un total correcto y un ID creado no bastan para validar su tipo fiscal; el importador de planillas requiere su propia verificación.
+
 ## Correcciones estructuradas
 
 Cuando la lectura automática no sea suficiente, aportar una corrección JSON por cada `--source` mediante `--document-json` o `--document-file`. No combinar ambas opciones. La cantidad de correcciones debe coincidir con la cantidad de fuentes.
+
+Los importes admiten cero numérico explícito o una cadena como `"0.00"`; un valor vacío sigue siendo un dato faltante, no un cero. Si se reemplaza `idcuenta` o `idcentrocosto`, la vista previa solo reutiliza el nombre histórico cuando corresponde al mismo ID. En otro caso muestra el ID seleccionado: resolver su nombre en el catálogo antes de presentar la propuesta comercial. No interpretar el nombre de un antecedente como prueba de la cuenta del body congelado ni reutilizar sin revisión una vista previa generada por una versión anterior.
 
 Ejemplo genérico:
 
@@ -103,6 +107,8 @@ Para todo CUIT extraído por OCR:
 3. recién entonces buscarlo en el maestro.
 
 Un CUIT inválido no demuestra que falte el proveedor. No crear proveedores automáticamente desde un OCR dudoso. Si el proveedor no puede resolverse de forma única, el candidato queda para verificar y no se construye un payload ejecutable.
+
+Un maestro creado por API puede existir con rol cliente y no aparecer en el selector web de proveedores. Buscar por CUIT antes de repetir el alta; comprobar y completar el rol del mismo registro según [capabilities-and-verification.md](capabilities-and-verification.md).
 
 ## Antecedentes contables
 
@@ -199,5 +205,7 @@ Después de crear:
 6. confirmar que no tenga `cancelado=1`, `fechabaja` ni pertenezca a una sección de anulados.
 
 Una respuesta exitosa de creación no reemplaza esta verificación. En particular, la fecha operativa para la consulta del período es `cabecera.fecha`; otros campos de fecha pueden quedar vacíos en el detalle.
+
+Cuando el trabajo incluya impuestos o imputación contable, consultar además `libroiva.compras` para el período y `asiento.get` con el ID de compra. Revisar tipo fiscal, categoría, IVA computable, jurisdicción de percepciones y cuentas efectivas. La cuenta elegida por un antecedente o una importación automática no acredita que la naturaleza y el destino coincidan con la nueva compra.
 
 Este flujo no anula, elimina ni da de baja compras.

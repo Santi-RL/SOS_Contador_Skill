@@ -65,7 +65,7 @@ No copiar estos ejemplos con valores reales a archivos públicos. Generar `uniqu
 
 Este body es documental: el alta observada devolvió `id: 0` sin persistencia comprobada. Volver a consultar `centrocosto.list` antes de repetir o completar por otra vía. Esto no valida la edición.
 
-`cliente.create` y `cliente.update`:
+`cliente.create` (body mínimo de alta):
 
 ```json
 {
@@ -78,6 +78,10 @@ Este body es documental: el alta observada devolvió `id: 0` sin persistencia co
 ```
 
 Usar exactamente `idtipocondicioniva`; las variantes `idcondicioniva` e `idtipo_condicioniva` fueron rechazadas en pruebas reales de clientes.
+
+Este body básico no garantiza el rol de proveedor: se verificó un alta con rol cliente. Antes de volver a crear un tercero ausente del selector de compras, buscarlo por CUIT y comprobar su rol en la web. Seguir el alcance y la corrección puntual documentados en [capabilities-and-verification.md](capabilities-and-verification.md).
+
+No reutilizarlo como actualización parcial de `cliente.update`: se comprobó que los campos omitidos pueden reemplazarse por valores vacíos o predeterminados. La respuesta del listado no alcanza para reconstruir la ficha completa. Para modificar solo la condición fiscal sin perder otros datos, aplicar la ruta de preservación y verificación de la matriz de capacidades; no inventar parámetros de escritura a partir de nombres de controles web.
 
 `grupomodificador.create` y `grupomodificador.update`:
 
@@ -248,6 +252,8 @@ En pagos sencillos, `imputaciones[].cuid` corresponde a la cuenta del medio de p
 ```
 
 Mantener cada base en una imputación separada según su alícuota. Registrar la percepción provincial identificada como IIBB con `i="percepcioniibb"` y conservar `idprovinciaiibb`; no convertir automáticamente otros tributos genéricos en IIBB. Si el neto ya refleja descuentos, mantener `descuento=0` para no duplicarlos.
+
+El ejemplo con una jurisdicción no cubre percepciones simultáneas de provincias diferentes. No agruparlas bajo `idprovinciaiibb` ni reutilizar un detalle de lectura como body. Consultar la alternativa web y su verificación en [capabilities-and-verification.md](capabilities-and-verification.md).
 
 Omitir `idcuenta` solo cuando se acepte que SOS asigne su valor predeterminado. Para documentos usar preferentemente `compra draft` y `compra create`, que congelan el payload aprobado, repiten la deduplicación antes de escribir y verifican el resultado. Verificar siempre la fecha persistida, todas las alícuotas y que el comprobante permanezca activo.
 

@@ -29,12 +29,12 @@ Real response note:
 - `PUT /cliente/:id`
 - `DELETE /cliente/:id`
 
-Observed create/update shape in real tests:
+Observed minimal create shape in real tests (not a safe partial-update body):
 
 ```json
 {
   "cuit": "<cuit_cliente>",
-  "clipro": "Banco de Galicia",
+  "clipro": "Cliente Demo S.A.",
   "idprovincia": 19,
   "idtipocondicioniva": 5,
   "email": "usuario@example.com"
@@ -45,6 +45,8 @@ Field-name note:
 
 - the documented and validated key is `idtipocondicioniva`
 - attempts with `idcondicioniva`, `idtipo_condicioniva`, or `idtipo_condicioniva` were rejected by the live API for create
+
+`PUT /cliente/:id` can replace omitted fields with empty/default values, including the supplier role. The list response does not expose the whole record. Read [capabilities-and-verification.md](capabilities-and-verification.md) before updating an existing third party; do not reuse this minimal create example as a PATCH.
 
 ### Producto
 
