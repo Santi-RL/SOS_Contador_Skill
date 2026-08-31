@@ -2,6 +2,8 @@
 
 Local document profiles are optional extraction overrides stored outside the public skill logic.
 
+They describe how to extract a recurring format, not how to account for a taxpayer's business. Keep current company instructions in the separate structure documented in [taxpayer-instructions.md](taxpayer-instructions.md); do not move these runtime profiles or merge their executable extraction rules into that guidance.
+
 Use them when:
 
 - the generic parser is not enough for a recurring document family

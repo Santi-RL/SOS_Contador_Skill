@@ -8,6 +8,7 @@
 - [Transporte](#transporte)
 - [Credenciales y datos sensibles](#credenciales-y-datos-sensibles)
 - [Exportaciones](#exportaciones)
+- [Instrucciones vigentes y expedientes](#instrucciones-vigentes-y-expedientes)
 
 ## CUIT de trabajo
 
@@ -30,9 +31,9 @@ Para toda operación con `side_effect=true`:
 
 1. Resolver el CUIT y los IDs involucrados.
 2. Ejecutar `--dry-run` y revisar la previsualización técnica y comercial.
-3. Confirmar con el usuario el efecto concreto.
+3. Comprobar que el usuario autorizó el efecto concreto. Una autorización vigente para el mismo alcance no se pide otra vez; la vista previa sigue siendo obligatoria.
 4. Repetir con `--confirm`.
-5. Verificar mediante una lectura independiente.
+5. Verificar mediante una lectura independiente los campos guardados y el efecto buscado. Un ID devuelto no acredita persistencia completa; ante un resultado ambiguo, consultar antes de reintentar.
 
 No interpretar una confirmación de creación o modificación como autorización para anular.
 
@@ -57,7 +58,7 @@ Usar la API pública para toda capacidad documentada. Usar HTTP `web-session` ú
 - asociaciones de cobranzas;
 - operaciones públicas documentadas que hayan fallado y cuyo fallback haya sido autorizado explícitamente.
 
-No usar automatización de navegador como sustituto de ninguno de estos transportes.
+No usar automatización de navegador como sustituto general de estos transportes. Si ambos carecen de una ruta suficiente para el campo o acción requerida, aplicar únicamente las excepciones acotadas de [capabilities-and-verification.md](capabilities-and-verification.md), con navegador visible autorizado o intervención del usuario. Mantener la verificación independiente y no extraer ni reutilizar cookies del navegador por fuera de esa herramienta.
 
 ## Credenciales y datos sensibles
 
@@ -67,10 +68,12 @@ El CLI debe redactar claves con semántica de contraseña, secreto o token. Las 
 
 ## Exportaciones
 
-Guardar artefactos durables en:
+Respetar primero la ruta o directorio privado indicado por el usuario. No sobrescribir archivos ajenos a la modificación autorizada, no colocar datos reales en un repositorio público ni crear una copia adicional solo para imponer la estructura predeterminada.
+
+Si no se indicó destino, guardar exportaciones durables en:
 
 ```text
-<SOS_CONTADOR_HOME>/local/exports/<cuit_trabajo>/<tipo>/<YYYY>/<MM>/
+<SOS_CONTADOR_HOME>/local/exports/<nombre_normalizado>__<CUIT_formateada>/<tipo>/<YYYY>/<MM>/
 ```
 
 Usar carpetas estables como `ventas`, `compras`, `cobranzas`, `clientes`, `productos`, `asientos`, `libros_iva` o `plan_de_cuentas`.
@@ -82,3 +85,11 @@ Prefijar los nombres con fecha ISO, por ejemplo:
 ```
 
 Guardar, cuando aporte trazabilidad, la respuesta cruda y una versión normalizada `.csv`, `.md` o `.meta.json`.
+
+Localizar directorios existentes por CUIT antes de crear uno. La clave con nombre es para navegación humana; no renombrar automáticamente directorios antiguos, cachés ni perfiles de extracción que usan solo CUIT.
+
+## Instrucciones vigentes y expedientes
+
+Mantener las reglas de cada empresa en `local/taxpayers/<nombre_cuit>/INSTRUCCIONES.md` y los temas enlazados que necesite. Leer y actualizar conforme a [taxpayer-instructions.md](taxpayer-instructions.md). No incluir fechas en sus nombres ni acumular entradas de ejecución.
+
+Conservar fuentes, borradores, respuestas y entregables de una tarea en `local/jobs/<nombre_cuit>/<YYYY>/<MM>/<job_id>/{sources,drafts,results,artifacts}/`. Esos archivos aportan evidencia; no sustituyen las instrucciones vigentes. Si el usuario indicó una fuente existente, leerla allí sin moverla ni duplicarla por esta convención.

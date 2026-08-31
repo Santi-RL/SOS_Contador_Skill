@@ -30,6 +30,8 @@ El agente debe leer `sos-contador-api/SKILL.md` antes de operar. Si la plataform
 
 Los comprobantes, perfiles, exportaciones, cachés y credenciales no deben almacenarse dentro del clon.
 
+Las instrucciones vigentes de cada empresa tienen un punto de entrada privado y estable, separado de los expedientes mensuales. La skill indica cómo localizarlas y actualizarlas sin convertirlas en un historial de acciones; ver [instrucciones por contribuyente](sos-contador-api/references/taxpayer-instructions.md).
+
 ## Desarrollo
 
 ```powershell
@@ -43,6 +45,8 @@ Además, validar el formato de la skill con las herramientas disponibles en la p
 ## Alcance
 
 La skill prioriza la API pública. El transporte HTTP `web-session` es un fallback explícito para capacidades que la API no cubre y no reutiliza perfiles ni cookies del navegador.
+
+La [matriz de capacidades y verificación](sos-contador-api/references/capabilities-and-verification.md) delimita los campos y modos comprobados, las limitaciones observadas y las acciones que requirieron una interfaz web autorizada. Un endpoint disponible no garantiza que persista todos los campos enviados.
 
 ## Licencia
 
