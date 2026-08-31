@@ -92,6 +92,7 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 
 - Para “Mis Comprobantes Recibidos/Emitidos”, leer [references/mis-comprobantes-afip.md](references/mis-comprobantes-afip.md).
 - Para compras desde PDF o imágenes, leer [references/compra-from-pdf-folder.md](references/compra-from-pdf-folder.md).
+- Si falta un comprobante y se necesita corroborar percepciones, consultar [references/percepciones-iibb-sin-comprobante.md](references/percepciones-iibb-sin-comprobante.md). Distinguir los registros fiscales del original y la información disponible de un período completo.
 - Priorizar, en este orden, texto digital embebido, lectura visual estructurada cuando el agente disponga de visión y OCR local como contraste. Si no hay visión disponible, permitir OCR como fuente primaria sujeto a todas las validaciones determinísticas y a la revisión del borrador.
 - Para OCR, usar español (`spa`) por defecto y recurrir a inglés (`eng`) solo cuando español no esté disponible. Si faltan ambos idiomas y tampoco existe otra extracción confiable, detener la extracción y reportar la configuración requerida; no inferir datos fiscales desde una lectura parcial.
 - Cuando una lectura estructurada y la extracción automática informen valores distintos para identidad, CUIT, fecha o importes, dejar el candidato en `verificar`. Resolver cada discrepancia contra el comprobante y declarar solo esos campos en `_reviewed_conflicts`; no aceptar conflictos en bloque.
@@ -108,6 +109,7 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 - Si `compra.search` devuelve 50 filas, tratar el resultado como potencialmente truncado y subdividir el rango de fechas.
 - En compras, usar fechas ISO `YYYY-MM-DD` en `fecha` y `fechaiva`.
 - Mantener positivas las notas de crédito de compra y representar su naturaleza con `fcncnd` y `tipocomprobante`.
+- Interpretar `tipocomprobante` como código fiscal, no como un identificador interno descartable: `1/001` es Factura A común y `201` es Factura de Crédito Electrónica MiPyMEs A. No determinar el subtipo solo por letra y `fcncnd`; si original, detalle y Libro IVA discrepan, aplicar los controles de [capabilities-and-verification.md](references/capabilities-and-verification.md) antes de escribir.
 - Verificar después de crear: identidad del comprobante, proveedor, fecha persistida, todas las alícuotas, percepción de IIBB, total redondeado a centavos, presencia en el período y estado activo.
 
 ## Configuración contable, pagos y reclasificaciones

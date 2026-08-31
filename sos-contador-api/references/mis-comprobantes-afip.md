@@ -96,10 +96,13 @@ These mappings were observed against real SOS purchase records for AFIP imports.
 | --- | --- | --- | --- | --- | --- |
 | `1 - Factura A` | `F` | `A` | `1` | `+1` | Standard invoice |
 | `81 - Tique Factura A` | `F` | `A` | `1` | `+1` | Observed to persist like `Factura A` in SOS |
+| `201 - Factura de Crédito Electrónica MiPyMEs (FCE) A` | `F` | `A` | `201` | `+1` | Distinct fiscal subtype; do not normalize it to Factura A `1/001` merely because the letter is A |
 | `11 - Factura C` | `F` | `C` | `11` | `+1` | No VAT buckets, usually non-taxed |
 | `3 - Nota de Credito A` | `C` | `A` | `3` | `+1` | Keep amounts positive in SOS purchases; the document nature stays identified by `fcncnd=C` and `tipocomprobante=3` |
 
 If the file contains an unknown type, mark the row as `verificar` and do not create it automatically.
+
+`Letra=A` and `fcncnd=F` do not distinguish `001` from `201`: the source type code and the original must do so. After loading or auditing a purchase, compare the original code, `compra.get.cabecera.tipocomprobante` and `libroiva.compras.codigocomprobanteafip`. Do not describe `201` as an internal SOS code. If the original and Libro IVA both indicate `001` but the detail returns `201`, preserve the document as a standard invoice for reporting, record the header discrepancy and follow [capabilities-and-verification.md](capabilities-and-verification.md); do not re-save the entire purchase solely to normalize a limited field.
 
 ## Amount Normalization
 

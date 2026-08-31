@@ -72,6 +72,8 @@ Para corregir esta configuración compartida:
 
 El detalle `compra.get` puede conservar `cabecera.tipocomprobante=1` aunque el libro devuelva `codigocomprobanteafip=081`. Tampoco basta `tiquet` aislado para inferir el código exportado. No corregir esas cabeceras por mera discrepancia; contrastar original y libro. El importador de planillas conserva su normalización en `afip_type_rule`: no suponer que transporta por sí solo el subtipo. Si el libro pierde el código original, detener nuevas cargas por esa ruta y resolver la configuración sin duplicar compras.
 
+`tipocomprobante=201` no es una variante interna de la Factura A común: corresponde a **Factura de Crédito Electrónica MiPyMEs (FCE) A**. Si el original indica `001`, el listado visible y `libroiva.compras` conservan `001`, pero `compra.get` devuelve `201`, registrar la discrepancia de la cabecera y no interpretar el documento como FCE. No regrabar una compra completa únicamente para normalizar ese campo mientras la ruta de actualización sea `limited` y el código fiscal efectivo del libro sea correcto; una corrección requiere delimitar los demás campos que se volverían a guardar y verificar el libro después.
+
 ### Otros controles de comprobantes
 
 El campo resumido rotulado **No Grav** persistió como `nogravado`. **Total Otro** con alícuota cero persistía como `neto` al 0%; no son equivalentes en el Libro IVA. Al trasladar un importe, vaciar efectivamente el campo anterior y comprobar la recalculación antes de guardar: el formulario puede reconstruir controles al perder el foco. Revisar los valores resultantes, no dar por aplicada una modificación por la sola ejecución del comando de entrada.
