@@ -6,6 +6,7 @@
 - [Comandos](#comandos)
 - [Parámetros](#parámetros)
 - [Estados de madurez](#estados-de-madurez)
+- [Alcance comprobado y límites](#alcance-comprobado-y-límites)
 - [Módulos cubiertos](#módulos-cubiertos)
 - [Operaciones especiales](#operaciones-especiales)
 
@@ -76,6 +77,12 @@ Usar `--out` para respuestas binarias o exportaciones que deban persistir, por e
 | `internal` | Parte del flujo de autenticación; no invocar directamente para evitar exposición de tokens. |
 | `blocked` | Operación destructiva deliberadamente bloqueada por seguridad. |
 
+## Alcance comprobado y límites
+
+El estado se refiere al alcance descrito en `summary` y `guidance`, consultables con `api describe`. Un alta validada no valida también la edición, la baja o todos los campos de la entidad. La fecha `reviewed_at` corresponde a la colección documental; `operationally_reviewed_at` identifica la revisión posterior de comportamientos observados.
+
+Antes de configurar cuentas, conceptos, puntos de venta, centros o actividades, o de reclasificar compras, ventas, pagos y asientos, leer [capabilities-and-verification.md](capabilities-and-verification.md). Esa matriz distingue capacidades públicas, campos no persistidos, comprobaciones contables y acciones que requirieron la web. No se agregan rutas inferidas al catálogo.
+
 ## Módulos cubiertos
 
 | Módulo | Capacidades |
@@ -92,6 +99,11 @@ Usar `--out` para respuestas binarias o exportaciones que deban persistir, por e
 - `compra.search` y `venta.search` usan `POST`, pero son lecturas y no requieren `--confirm`.
 - `venta.save` está documentada por SOS, pero permanece sin validación real en este proyecto.
 - `cuentacorriente.list` es experimental porque Postman indica que no está implementada.
-- `mayor.list` es experimental porque la solicitud publicada omite la autenticación explícita; el catálogo supone JWTC por coherencia con los reportes contables.
+- `mayor.list` se comprobó con JWTC, aunque Postman omite la autenticación explícita. Su estado es `limited`: puede devolver el ejercicio completo aunque se pidan fechas más estrechas. Comprobar el rango efectivo, cuenta y completitud; un error no equivale a ausencia de movimientos.
+- `centrocosto.create` devolvió `id: 0` sin alta comprobada; volver a listar antes de decidir un fallback o reintento.
+- `compra.save` permitió corregir cuenta e imputaciones, pero no persistió el cambio de `codactividad` en el caso observado.
+- `puntoventa.update` permitió cambiar actividad; comparar además los campos no solicitados, como `ticket`.
+- `asiento.save` se comprobó para alta sin ID. La edición y baja requieren validación independiente.
+- `pago.save` permite registrar un pago, pero la cuenta de cabecera no garantiza la contrapartida de su asiento ni la aplicación a facturas.
 - `auth.login`, `auth.credentials` y `cuit.credentials` se administran internamente y no se exponen mediante `api invoke`.
 - Las bajas de compras, ventas, cobros y pagos permanecen bloqueadas aunque figuren en Postman.

@@ -61,21 +61,13 @@ Rules for that mode:
 - Keep a running record of correct methods, failed methods, and useful API findings in `./sos-contador-api/references/manual-terminal-api.md`.
 - Use the public API flow from the Postman documentation first: `POST /login`, then `GET /cuit/credentials/:idcuit`, then the relevant business endpoint.
 
-## Local Export Storage
+## Private Instructions And Operational Storage
 
-For durable SOS Contador downloads and exports, do not leave files in temp folders, the repository root, or ad-hoc locations.
+After resolving a taxpayer, read its current private `INSTRUCCIONES.md` and relevant linked topics as described in `sos-contador-api/references/taxpayer-instructions.md`. The default entrypoint is `<SOS_CONTADOR_HOME>/local/taxpayers/<normalized_name>__<formatted_cuit>/INSTRUCCIONES.md`. Match existing directories by CUIT before creating another. Keep instructions current by editing the applicable rule, not appending a log per task.
 
-Store them under:
+Keep job evidence under `local/jobs/<name_cuit>/<YYYY>/<MM>/<job_id>/` and instructions outside the dated jobs. Historical reports may link to the current instructions but must not become competing sources of rules. Extraction profiles keep their existing runtime layout.
 
-- `<SOS_CONTADOR_HOME>/local/exports/<cuit_trabajo>/<artifact_kind>/<YYYY>/<MM>/`
-
-Rules:
-
-- Use the `CUIT de trabajo` as the primary folder key.
-- Use stable artifact folders such as `plan_de_cuentas`, `ventas`, `cobranzas`, `clientes`, `productos`, or `compras`.
-- Prefix filenames with the export date in ISO format, for example `2026-04-10-plan-de-cuentas-<cuit_trabajo>.json`.
-- When useful, save the raw export plus a normalized companion file such as `.csv`, `.md`, or `.meta.json`.
-- Keep these exports under the private runtime home so they cannot be committed from this repository.
+Respect an explicit private output destination. Otherwise store exports under `<SOS_CONTADOR_HOME>/local/exports/<name_cuit>/<artifact_kind>/<YYYY>/<MM>/`, with an ISO date prefix and stable kinds such as `plan_de_cuentas`, `ventas`, `compras` or `asientos`. Preserve existing CUIT-only directories rather than renaming them automatically. Follow `sos-contador-api/references/safety-and-storage.md` for source files, backups and privacy.
 
 ## Output Format
 

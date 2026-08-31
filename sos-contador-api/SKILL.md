@@ -16,8 +16,8 @@ Operar con el CLI incluido y mantener explícito el CUIT de trabajo. Preferir he
 python scripts/sos_contador_api.py auth resolve-cuit --name "empresa demo"
 ```
 
-3. Fijar `--cuit-trabajo`, `--cuit-trabajo-id` o `--cuit-trabajo-nombre` en toda operación autenticada con JWTC.
-4. Usar primero un helper especializado cuando exista.
+3. Fijar `--cuit-trabajo`, `--cuit-trabajo-id` o `--cuit-trabajo-nombre` en toda operación autenticada con JWTC. Buscar las instrucciones privadas de esa CUIT en `local/taxpayers/<nombre_cuit>/INSTRUCCIONES.md` y leer solo los temas pertinentes. Seguir [references/taxpayer-instructions.md](references/taxpayer-instructions.md) para localizarlas, consolidarlas o actualizarlas; no tratar informes de trabajos anteriores como reglas vigentes.
+4. Usar primero un helper especializado cuando exista. Para configuración contable, reclasificaciones, pagos o asientos, consultar también [references/capabilities-and-verification.md](references/capabilities-and-verification.md): la validación de una operación no garantiza todos sus campos ni todos sus modos.
 5. Para capacidades sin helper, consultar `api catalog` o `api describe` y ejecutar por ID estable con `api invoke`.
 6. Ejecutar lecturas directamente. Para escrituras, mostrar primero `--dry-run` y ejecutar con `--confirm` solo después de la confirmación explícita del usuario.
 7. Verificar el resultado de toda escritura mediante una lectura independiente.
@@ -54,7 +54,7 @@ Leer [references/public-api.md](references/public-api.md) antes de usar una oper
 
 - No usar automatización de navegador, perfiles de navegador, cookies existentes ni toma de sesión para tareas normales.
 - Usar la API pública primero. Tratar `web-session` como fallback HTTP interno y frágil.
-- No cambiar automáticamente a `web-session` cuando falle una operación que debería funcionar por API. Diagnosticar primero y pedir permiso antes del fallback.
+- No cambiar automáticamente de transporte cuando falle una operación que debería funcionar por API. Diagnosticar primero y aplicar el alcance autorizado; pedir permiso para el fallback si aún no está autorizado.
 - No anular, cancelar, eliminar ni dar de baja un comprobante salvo pedido explícito para ese comprobante y mecanismo previamente validado.
 - Mantener bloqueados por defecto `compra.delete`, `venta.delete`, `cobro.delete` y `pago.delete`.
 - No incluir tokens, contraseñas, CUIT reales ni datos de clientes en archivos públicos, ejemplos, pruebas o documentación.
@@ -108,6 +108,13 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 - Mantener positivas las notas de crédito de compra y representar su naturaleza con `fcncnd` y `tipocomprobante`.
 - Verificar después de crear: identidad del comprobante, proveedor, fecha persistida, todas las alícuotas, percepción de IIBB, total redondeado a centavos, presencia en el período y estado activo.
 
+## Configuración contable, pagos y reclasificaciones
+
+- Separar cuenta contable, distribución por función, actividad, centro de costo y producto/concepto. Configurar uno no configura automáticamente los demás.
+- Clasificar por naturaleza y destino documentados al trabajo, no solamente por proveedor. Una regla particular del contribuyente permanece en sus instrucciones privadas.
+- Verificar los campos persistidos después de guardar y el asiento o mayor cuando el objetivo sea contable. La cabecera de un pago no prueba su contrapartida automática, y un asiento no demuestra una asociación comercial.
+- Cuando API y fallback HTTP carezcan de una ruta suficiente para el campo requerido, usar el flujo web visible autorizado con los límites de [capabilities-and-verification.md](references/capabilities-and-verification.md). No generalizar ese acceso a otras operaciones.
+
 ## Modo terminal manual
 
 Si el usuario pide trabajar manualmente, sin scripts o solo desde Postman:
@@ -123,9 +130,10 @@ Si el usuario pide trabajar manualmente, sin scripts o solo desde Postman:
 - Presentar conjuntos de registros en tablas Markdown.
 - Usar prosa para un solo detalle o una respuesta demasiado ancha.
 - No mencionar el transporte en respuestas normales salvo que afecte alcance o confiabilidad.
-- Guardar exportaciones durables bajo `<SOS_CONTADOR_HOME>/local/exports/<cuit_trabajo>/<tipo>/<YYYY>/<MM>/` con fecha ISO al comienzo del nombre.
+- Respetar el destino privado indicado por el usuario. Por defecto, guardar exportaciones bajo `<SOS_CONTADOR_HOME>/local/exports/<nombre_cuit>/<tipo>/<YYYY>/<MM>/`, con fecha ISO al comienzo del nombre y clave `<nombre_normalizado>__<CUIT_formateada>`; localizar directorios existentes por CUIT antes de crear otro.
 - Mantener capturas, perfiles, PDFs, datos reales y notas de diagnóstico únicamente bajo `<SOS_CONTADOR_HOME>/local/`, fuera de la skill instalada.
+- Mantener instrucciones vigentes por empresa en `local/taxpayers/`, sin dividirlas por año, mes o tarea. Los expedientes en `local/jobs/` conservan evidencia e historial, no la fuente principal de instrucciones.
 
 ## Límites documentales
 
-Tratar como experimentales las operaciones cuyo propio documento es incompleto o contradictorio, especialmente `cuentacorriente.list` y `mayor.list`. No inferir cuerpos, filtros ni semántica destructiva ausente. Validar primero con una lectura o un `--dry-run` y documentar solo reglas generalizables.
+Tratar como experimentales las operaciones cuyo propio documento es incompleto o contradictorio, como `cuentacorriente.list`. `mayor.list` funciona con JWTC, pero tiene límites de filtrado documentados. No inferir cuerpos, filtros ni semántica destructiva ausente. Validar primero con una lectura o un `--dry-run` y documentar solo reglas generalizables.

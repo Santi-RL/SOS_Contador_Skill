@@ -63,6 +63,8 @@ No copiar estos ejemplos con valores reales a archivos públicos. Generar `uniqu
 {"centro":"Centro de costo Demo"}
 ```
 
+Este body es documental: el alta observada devolvió `id: 0` sin persistencia comprobada. Volver a consultar `centrocosto.list` antes de repetir o completar por otra vía. Esto no valida la edición.
+
 `cliente.create` y `cliente.update`:
 
 ```json
@@ -106,6 +108,8 @@ Usar exactamente `idtipocondicioniva`; las variantes `idcondicioniva` e `idtipo_
 }
 ```
 
+En productos se comprobó el alta de campos básicos y centro; el listado no expone cuenta de venta/compra ni actividad. Esos valores requirieron configuración web, tras la cual el centro quedó en `null`. Comprobar el resultado final en ambos transportes cuando corresponda; no prometer valores automáticos solo por haberlos enviado. Verificar también la persistencia de `memo`.
+
 `puntoventa.create` y `puntoventa.update`:
 
 ```json
@@ -117,6 +121,8 @@ Usar exactamente `idtipocondicioniva`; las variantes `idcondicioniva` e `idtipo_
   "cbu": ""
 }
 ```
+
+En puntos de venta se comprobó la actualización de `codactividad`, no todos los modos. Preservar los demás valores y comparar la respuesta completa: se observó normalización de `ticket`. No usar un body parcial como si fuera un PATCH garantizado.
 
 ## Consultas
 
@@ -179,7 +185,7 @@ Usar exactamente `idtipocondicioniva`; las variantes `idcondicioniva` e `idtipo_
 }
 ```
 
-Comprobar antes del envío que la suma de `fd` sea igual a la suma de `fh`.
+Comprobar antes del envío que la suma de `fd` sea igual a la suma de `fh`. El alta sin `--param id` fue comprobada. Consultar después `asiento.get`, `asiento.list` y los mayores afectados. Un asiento manual no aplica pagos a facturas ni habilita editar un asiento automático. La modificación de un asiento existente no queda validada por el alta.
 
 ## Cobros y pagos
 
@@ -199,6 +205,8 @@ Comprobar antes del envío que la suma de `fd` sea igual a la suma de `fh`.
 ```
 
 La forma pública no representa el detalle completo de cheques y retenciones. Para esos casos usar los helpers especializados y su flujo `web-session` validado.
+
+En pagos sencillos, `imputaciones[].cuid` corresponde a la cuenta del medio de pago y `fv` al importe; no colocar allí el ID de una factura. La cabecera puede conservar `idcuenta` aunque el asiento generado debite Proveedores. Verificar la contrapartida en el asiento o mayor, además del detalle del pago. La forma básica no crea una asociación a compras ni garantiza que un anticipo quede contabilizado en su cuenta definitiva; ver [capabilities-and-verification.md](capabilities-and-verification.md).
 
 ## Compras
 
@@ -242,6 +250,10 @@ La forma pública no representa el detalle completo de cheques y retenciones. Pa
 Mantener cada base en una imputación separada según su alícuota. Registrar la percepción provincial identificada como IIBB con `i="percepcioniibb"` y conservar `idprovinciaiibb`; no convertir automáticamente otros tributos genéricos en IIBB. Si el neto ya refleja descuentos, mantener `descuento=0` para no duplicarlos.
 
 Omitir `idcuenta` solo cuando se acepte que SOS asigne su valor predeterminado. Para documentos usar preferentemente `compra draft` y `compra create`, que congelan el payload aprobado, repiten la deduplicación antes de escribir y verifican el resultado. Verificar siempre la fecha persistida, todas las alícuotas y que el comprobante permanezca activo.
+
+Para corregir una compra existente, usar su ID comprobado, no `id=0`. Reconstruir el body completo conservando identidad, fecha, tipo, numeración, CAE, jurisdicción, centro y otros campos ajenos al cambio; no enviar el objeto de detalle sin transformar. En el detalle, `imputaciones[].cuid` puede ser el identificador de una línea; el `cuid` de escritura de esta estructura debe contener el **ID de la cuenta**, resuelto desde `idcuenta` y el catálogo.
+
+Se comprobó el cambio de cuenta y netos y la eliminación de una percepción no respaldada. No usar percepciones para compensar redondeos. No tratar `codactividad` como un cambio garantizado: el servidor aceptó una solicitud sin persistirlo. Verificar cuenta de cabecera, cuentas de líneas, actividad, centro e importes después de guardar, con las condiciones de [capabilities-and-verification.md](capabilities-and-verification.md).
 
 ## Ventas
 
