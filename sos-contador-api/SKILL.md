@@ -92,6 +92,7 @@ Leer [references/cobro-from-document.md](references/cobro-from-document.md) para
 
 - Para “Mis Comprobantes Recibidos/Emitidos”, leer [references/mis-comprobantes-afip.md](references/mis-comprobantes-afip.md).
 - Para compras desde PDF o imágenes, leer [references/compra-from-pdf-folder.md](references/compra-from-pdf-folder.md).
+- Para auditar compras ya registradas contra una carpeta documental, normalizar originales, corregir imputaciones y cerrar un período, leer [references/auditoria-compras.md](references/auditoria-compras.md).
 - Si falta un comprobante y se necesita corroborar percepciones, consultar [references/percepciones-iibb-sin-comprobante.md](references/percepciones-iibb-sin-comprobante.md). Distinguir los registros fiscales del original y la información disponible de un período completo.
 - Priorizar, en este orden, texto digital embebido, lectura visual estructurada cuando el agente disponga de visión y OCR local como contraste. Si no hay visión disponible, permitir OCR como fuente primaria sujeto a todas las validaciones determinísticas y a la revisión del borrador.
 - Para OCR, usar español (`spa`) por defecto y recurrir a inglés (`eng`) solo cuando español no esté disponible. Si faltan ambos idiomas y tampoco existe otra extracción confiable, detener la extracción y reportar la configuración requerida; no inferir datos fiscales desde una lectura parcial.
