@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import fitz
 from openpyxl import Workbook
 from PIL import Image
+import pytest
 import xlwt
 
 
@@ -237,6 +238,92 @@ def test_command_cobro_create_from_draft_uses_cached_payload(tmp_path, sos_api, 
     result = sos_api.command_cobro_create(args, sos_api.SOSContadorClient())
     assert result["draft_id"] == "abc123"
     assert result["association"]["grupo_objetivo"][0]["comprobante"] == "R-0000-00031599"
+
+
+def test_build_association_body_preserves_existing_cobro_group(sos_api):
+    groups = [
+        [{"id": "cobro"}, {"id": "venta-anterior"}],
+        [{"id": "venta-nueva"}],
+        [{"id": "otro-cobro"}, {"id": "otra-venta"}],
+    ]
+
+    body = sos_api.build_association_save_body(
+        idclipro="cliente",
+        groups=groups,
+        target_document_ids=["cobro", "venta-nueva"],
+    )
+
+    assert {tuple(item["c"]) for item in body["a"]} == {
+        ("cobro", "venta-anterior", "venta-nueva"),
+        ("otro-cobro", "otra-venta"),
+    }
+    assert body["d"] == []
+
+
+def test_build_association_body_rejects_sale_from_another_group(sos_api):
+    groups = [
+        [{"id": "cobro"}],
+        [{"id": "otro-cobro"}, {"id": "venta-ocupada"}],
+    ]
+
+    with pytest.raises(sos_api.CLIError, match="otro grupo"):
+        sos_api.build_association_save_body(
+            idclipro="cliente",
+            groups=groups,
+            target_document_ids=["cobro", "venta-ocupada"],
+        )
+
+
+def test_command_cobro_create_resumes_after_association_failure(tmp_path, sos_api, monkeypatch):
+    draft_path = tmp_path / "draft.json"
+    sos_api.save_json_file(
+        draft_path,
+        {
+            "draft_id": "resume123",
+            "created_at": sos_api.utc_now_iso(),
+            "contexto": {"cuit_trabajo": {"cuit": "20000000000"}},
+            "cliente": {"idclipro": "2002"},
+            "recibo": {"fecha": "15/03/2026", "comentarios": "prueba", "movimientos": [], "centro_costo_id": "5002"},
+            "asociacion": {"facturas": [{"comprobante": "C-0002-00000005"}]},
+            "validacion": {"missing_fields": [], "timings": {}},
+        },
+    )
+
+    dummy_client = SimpleNamespace(get_session=lambda: SimpleNamespace(cuit="20000000000"))
+    body = {"fecha": "15/03/2026", "numero": "31599", "idclipro": "2002", "movimientos": []}
+    counters = {"save": 0, "resolve": 0, "associate": 0}
+
+    class FakeWebClient:
+        def save_comprobante(self, payload):
+            counters["save"] += 1
+            return {"id": "999"}
+
+    def resolve_identity(**kwargs):
+        counters["resolve"] += 1
+        return {"id": "999", "idclipro": "2002", "comprobante": "R-0000-00031599"}
+
+    def associate(**kwargs):
+        counters["associate"] += 1
+        if counters["associate"] == 1:
+            raise sos_api.CLIError("fallo posterior simulado")
+        return {"grupo_objetivo": [{"id": "999"}, {"id": "venta"}]}
+
+    monkeypatch.setattr(sos_api, "build_cobro_detail_body_from_draft", lambda draft, client: (dummy_client, body))
+    monkeypatch.setattr(sos_api, "SOSContadorWebClient", lambda *args, **kwargs: FakeWebClient())
+    monkeypatch.setattr(sos_api, "resolve_saved_cobro_identity", resolve_identity)
+    monkeypatch.setattr(sos_api, "associate_cobro_documents", associate)
+
+    args = make_args(draft_file=str(draft_path), confirm=True)
+    with pytest.raises(sos_api.CLIError, match="fallo posterior"):
+        sos_api.command_cobro_create(args, sos_api.SOSContadorClient())
+
+    result = sos_api.command_cobro_create(args, sos_api.SOSContadorClient())
+
+    assert result["id"] == "999"
+    assert counters == {"save": 1, "resolve": 1, "associate": 2}
+    persisted = sos_api.load_json_file(draft_path, {})
+    assert persisted["execution"]["save_payload"] == {"id": "999"}
+    assert persisted["execution"]["cobro_identity"]["id"] == "999"
 
 
 def test_extract_invoice_candidates_ignores_retention_like_tokens(sos_api):

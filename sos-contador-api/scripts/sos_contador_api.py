@@ -501,6 +501,15 @@ def load_draft_payload(*, draft_id: str | None = None, draft_file: str | None = 
     return payload
 
 
+def save_draft_checkpoint(payload: dict[str, Any], *, draft_file: str | None = None) -> Path:
+    """Persist execution state to the same draft source used by the command."""
+    if draft_file:
+        destination = Path(draft_file)
+        save_json_file(destination, payload)
+        return destination
+    return save_draft_payload(payload)
+
+
 def slugify(value: str | None) -> str:
     normalized = normalize_search_text(value)
     if not normalized:
@@ -5484,13 +5493,23 @@ def build_association_save_body(
     groups: list[list[dict[str, Any]]],
     target_document_ids: list[str],
 ) -> dict[str, Any]:
-    target_ids = {str(item) for item in target_document_ids}
+    merged_target_ids = merge_association_document_ids(
+        groups=groups,
+        target_document_ids=target_document_ids,
+    )
+    target_ids = set(merged_target_ids)
+    anchor_id = merged_target_ids[0]
     rebuilt_groups: list[list[str]] = []
     for group in groups:
-        remaining = [str(item.get("id")) for item in group if str(item.get("id") or "") and str(item.get("id")) not in target_ids]
-        if remaining:
-            rebuilt_groups.append(remaining)
-    rebuilt_groups.append(list(dict.fromkeys(str(item) for item in target_document_ids if str(item or "").strip())))
+        group_ids = list(
+            dict.fromkeys(str(item.get("id")) for item in group if str(item.get("id") or "").strip())
+        )
+        if not group_ids or anchor_id in group_ids:
+            continue
+        if len(group_ids) == 1 and group_ids[0] in target_ids:
+            continue
+        rebuilt_groups.append(group_ids)
+    rebuilt_groups.append(merged_target_ids)
 
     asociados: list[dict[str, list[str]]] = []
     desasociados: list[str] = []
@@ -5510,6 +5529,42 @@ def build_association_save_body(
         "a": asociados,
         "d": desasociados,
     }
+
+
+def merge_association_document_ids(
+    *,
+    groups: list[list[dict[str, Any]]],
+    target_document_ids: list[str],
+) -> list[str]:
+    requested_ids = list(dict.fromkeys(str(item) for item in target_document_ids if str(item or "").strip()))
+    if len(requested_ids) < 2:
+        raise CLIError("La asociación requiere un cobro y al menos un comprobante de venta.")
+
+    anchor_id = requested_ids[0]
+    anchor_groups: list[list[str]] = []
+    for group in groups:
+        group_ids = list(
+            dict.fromkeys(str(item.get("id")) for item in group if str(item.get("id") or "").strip())
+        )
+        if anchor_id in group_ids:
+            anchor_groups.append(group_ids)
+    if len(anchor_groups) != 1:
+        raise CLIError("No se pudo determinar de forma unívoca el grupo actual del cobro.")
+
+    requested_set = set(requested_ids[1:])
+    for group in groups:
+        group_ids = list(
+            dict.fromkeys(str(item.get("id")) for item in group if str(item.get("id") or "").strip())
+        )
+        if anchor_id in group_ids or len(group_ids) < 2:
+            continue
+        if requested_set.intersection(group_ids):
+            raise CLIError(
+                "Uno de los comprobantes de venta ya integra otro grupo de asociación. "
+                "No se modificaron asociaciones existentes."
+            )
+
+    return list(dict.fromkeys(anchor_groups[0] + requested_ids))
 
 
 def verify_association_pair(
@@ -5946,6 +6001,10 @@ def associate_cobro_documents(
         )
     venta_docs = list({str(item.get("id")): item for item in venta_docs}.values())
     target_document_ids = [str(cobro_doc.get("id"))] + [str(item.get("id")) for item in venta_docs]
+    expected_document_ids = merge_association_document_ids(
+        groups=before_groups,
+        target_document_ids=target_document_ids,
+    )
     save_body = build_association_save_body(
         idclipro=idclipro,
         groups=before_groups,
@@ -5957,7 +6016,7 @@ def associate_cobro_documents(
 
     after_payload = web_client.get_cobropago_vs_compraventa(idclipro=idclipro, idtipo_operacion=12, items=[cobro_id])
     after_groups = parse_association_groups(after_payload)
-    verification = verify_association_pair(after_groups, expected_document_ids=target_document_ids)
+    verification = verify_association_pair(after_groups, expected_document_ids=expected_document_ids)
     return {
         "transport": "web-session",
         "idclipro": idclipro,
@@ -6042,22 +6101,54 @@ def command_cobro_create(args: argparse.Namespace, client: SOSContadorClient) ->
         ensure_mutation_allowed("POST", "back/comprobante_altamodi.asp", None, body, args)
         started_at = time.perf_counter()
         web_client = SOSContadorWebClient(api_client=bound_client, explicit_cuit=bound_client.get_session().cuit)
-        payload = web_client.save_comprobante(body)
-        cobro_identity = resolve_saved_cobro_identity(save_payload=payload, body=body, client=bound_client)
         venta_ids, facturas = extract_draft_association_targets(draft)
-        association = associate_cobro_documents(
-            client=bound_client,
-            cobro_id=cobro_identity.get("id") or "",
-            idclipro=cobro_identity.get("idclipro") or str(body.get("idclipro") or ""),
-            venta_ids=venta_ids,
-            facturas=facturas,
-            args=args,
-        )
+        execution = draft.setdefault("execution", {})
+        body_hash = compra_payload_hash(body)
+        association_targets_hash = compra_payload_hash({"venta_ids": venta_ids, "facturas": facturas})
+        if execution.get("body_sha256") not in (None, body_hash):
+            raise CLIError("El payload del cobro cambió después de iniciarse la ejecución. Genere un nuevo borrador.")
+        if execution.get("association_targets_sha256") not in (None, association_targets_hash):
+            raise CLIError("Las asociaciones del cobro cambiaron después de iniciarse la ejecución. Genere un nuevo borrador.")
+        execution["body_sha256"] = body_hash
+        execution["association_targets_sha256"] = association_targets_hash
+
+        payload = execution.get("save_payload")
+        if payload is None:
+            payload = web_client.save_comprobante(body)
+            if not isinstance(payload, dict):
+                raise CLIError("SOS no devolvió una respuesta utilizable al crear el cobro.")
+            execution["save_payload"] = make_json_safe(payload)
+            execution["saved_at"] = utc_now_iso()
+            save_draft_checkpoint(draft, draft_file=getattr(args, "draft_file", None))
+        elif not isinstance(payload, dict):
+            raise CLIError("El punto de control del cobro guardado no es válido. Genere un nuevo borrador.")
+
+        cobro_identity = execution.get("cobro_identity")
+        if not isinstance(cobro_identity, dict) or not cobro_identity.get("id"):
+            cobro_identity = resolve_saved_cobro_identity(save_payload=payload, body=body, client=bound_client)
+            execution["cobro_identity"] = make_json_safe(cobro_identity)
+            save_draft_checkpoint(draft, draft_file=getattr(args, "draft_file", None))
+
+        if "association" in execution:
+            association = execution.get("association")
+            if not isinstance(association, dict):
+                raise CLIError("El punto de control de asociaciones no es válido. Genere un nuevo borrador.")
+        else:
+            association = associate_cobro_documents(
+                client=bound_client,
+                cobro_id=cobro_identity.get("id") or "",
+                idclipro=cobro_identity.get("idclipro") or str(body.get("idclipro") or ""),
+                venta_ids=venta_ids,
+                facturas=facturas,
+                args=args,
+            )
+            execution["association"] = make_json_safe(association)
+            save_draft_checkpoint(draft, draft_file=getattr(args, "draft_file", None))
         draft.setdefault("validacion", {}).setdefault("timings", {})["execution_seconds"] = round(
             time.perf_counter() - started_at,
             3,
         )
-        save_draft_payload(draft)
+        save_draft_checkpoint(draft, draft_file=getattr(args, "draft_file", None))
         return {
             "transport": "web-session",
             "draft_id": draft.get("draft_id"),
@@ -6380,6 +6471,32 @@ def read_afip_mis_comprobantes_workbook(path: Path) -> dict[str, Any]:
             validation_errors.append(f"Tipo AFIP no soportado: {tipo_raw}.")
         if imp_total_raw == Decimal("0") and get_cell(row_values, "Imp. Total") in (None, ""):
             validation_errors.append("Imp. Total vacio.")
+        amounts_raw = {
+            "neto_0": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 0%")),
+            "neto_2_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 2,5%")),
+            "iva_2_5": decimal_or_zero(get_cell(row_values, "IVA 2,5%")),
+            "neto_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 5%")),
+            "iva_5": decimal_or_zero(get_cell(row_values, "IVA 5%")),
+            "neto_10_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 10,5%")),
+            "iva_10_5": decimal_or_zero(get_cell(row_values, "IVA 10,5%")),
+            "neto_21": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 21%")),
+            "iva_21": decimal_or_zero(get_cell(row_values, "IVA 21%")),
+            "neto_27": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 27%")),
+            "iva_27": decimal_or_zero(get_cell(row_values, "IVA 27%")),
+            "nogravado": decimal_or_zero(get_cell(row_values, "Neto No Gravado")),
+            "exento": decimal_or_zero(get_cell(row_values, "Op. Exentas")),
+            "otros": decimal_or_zero(get_cell(row_values, "Otros Tributos")),
+            "imp_total": imp_total_raw,
+        }
+        unsupported_rates = [
+            rate
+            for rate, keys in (("2,5%", ("neto_2_5", "iva_2_5")), ("5%", ("neto_5", "iva_5")))
+            if any(amounts_raw[key] != Decimal("0") for key in keys)
+        ]
+        if unsupported_rates:
+            validation_errors.append(
+                "Alícuotas de IVA no soportadas por el importador: " + ", ".join(unsupported_rates) + "."
+            )
         rows.append(
             {
                 "source_row": source_row,
@@ -6392,23 +6509,7 @@ def read_afip_mis_comprobantes_workbook(path: Path) -> dict[str, Any]:
                 "cae": digits_only(str(get_cell(row_values, "Cód. Autorización", "Cod. Autorizacion") or "")),
                 "counterparty_cuit": digits_only(str(get_cell(row_values, "Nro. Doc. Emisor") or "")),
                 "counterparty_name": str(get_cell(row_values, "Denominación Emisor", "Denominacion Emisor") or "").strip(),
-                "amounts_raw": {
-                    "neto_0": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 0%")),
-                    "neto_2_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 2,5%")),
-                    "iva_2_5": decimal_or_zero(get_cell(row_values, "IVA 2,5%")),
-                    "neto_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 5%")),
-                    "iva_5": decimal_or_zero(get_cell(row_values, "IVA 5%")),
-                    "neto_10_5": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 10,5%")),
-                    "iva_10_5": decimal_or_zero(get_cell(row_values, "IVA 10,5%")),
-                    "neto_21": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 21%")),
-                    "iva_21": decimal_or_zero(get_cell(row_values, "IVA 21%")),
-                    "neto_27": decimal_or_zero(get_cell(row_values, "Neto Grav. IVA 27%")),
-                    "iva_27": decimal_or_zero(get_cell(row_values, "IVA 27%")),
-                    "nogravado": decimal_or_zero(get_cell(row_values, "Neto No Gravado")),
-                    "exento": decimal_or_zero(get_cell(row_values, "Op. Exentas")),
-                    "otros": decimal_or_zero(get_cell(row_values, "Otros Tributos")),
-                    "imp_total": imp_total_raw,
-                },
+                "amounts_raw": amounts_raw,
                 "validation_errors": validation_errors,
             }
         )
@@ -7649,6 +7750,30 @@ def compra_payload_hash(body: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def compra_document_identity(fields: dict[str, Any]) -> tuple[str, str, str, int, int]:
+    return (
+        digits_only(str(fields.get("proveedor_cuit") or "")),
+        str(fields.get("fcncnd") or "").strip().upper(),
+        str(fields.get("letra") or "").strip().upper(),
+        int(fields.get("puntoventa") or 0),
+        int(fields.get("numero") or 0),
+    )
+
+
+def ensure_unique_pending_compra_rows(rows: list[dict[str, Any]]) -> None:
+    seen: dict[tuple[str, str, str, int, int], str] = {}
+    for row in rows:
+        identity = compra_document_identity(row.get("fields", {}))
+        document = str(row.get("documento") or "comprobante sin etiqueta")
+        previous = seen.get(identity)
+        if previous is not None:
+            raise CLIError(
+                f"El borrador repite la identidad de compra en {previous} y {document}. "
+                "No se registró el lote."
+            )
+        seen[identity] = document
+
+
 def build_compra_body_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
     amounts = fields.get("amounts", {})
     imputa: list[dict[str, Any]] = []
@@ -8034,6 +8159,7 @@ def command_compra_create(args: argparse.Namespace, client: SOSContadorClient) -
     preview = build_compra_draft_preview(draft)
     preview_markdown = render_compra_draft_markdown(draft)
     pending_rows = [row for row in draft.get("rows", []) if row.get("status") == "pendiente"]
+    ensure_unique_pending_compra_rows(pending_rows)
     mutation_payload = {
         "draft_id": draft.get("draft_id"),
         "bodies": [row.get("body") for row in pending_rows],
@@ -8072,6 +8198,16 @@ def command_compra_create(args: argparse.Namespace, client: SOSContadorClient) -
 
     created: list[dict[str, Any]] = []
     for row in ready_rows:
+        duplicate = find_compra_duplicate(bound_client, fields=row.get("fields", {}))
+        if duplicate and duplicate.get("kind") == "exact":
+            skipped_existing.append(
+                {"documento": row.get("documento"), "id": duplicate.get("id"), "motivo": "ya_cargado"}
+            )
+            continue
+        if duplicate:
+            raise CLIError(
+                f"El comprobante {row.get('documento')} cambió antes de la escritura con datos incompatibles."
+            )
         result = bound_client.request("PUT", "compra/0", body=row.get("body"))
         compra_id = result.get("id") if isinstance(result, dict) else None
         if not compra_id:

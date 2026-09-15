@@ -485,6 +485,23 @@ def test_compra_duplicate_distinguishes_exact_and_conflicting_amounts(sos_api, m
     assert inactive["active"] is False
 
 
+def test_pending_compra_rows_reject_duplicate_identity_before_writes(sos_api):
+    fields = {
+        "proveedor_cuit": "30000000015",
+        "fcncnd": "F",
+        "letra": "A",
+        "puntoventa": 2,
+        "numero": 77,
+    }
+    rows = [
+        {"documento": "FA-0002-00000077", "fields": fields},
+        {"documento": "copia-FA-0002-00000077", "fields": deepcopy(fields)},
+    ]
+
+    with pytest.raises(sos_api.CLIError, match="repite la identidad de compra"):
+        sos_api.ensure_unique_pending_compra_rows(rows)
+
+
 def test_compra_create_reuses_frozen_body_and_verifies_result(tmp_path, sos_api, monkeypatch):
     body = {
         "fecha": "2026-02-03",

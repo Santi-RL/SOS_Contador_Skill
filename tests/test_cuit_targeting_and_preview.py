@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from openpyxl import Workbook
 import pytest
 
 
@@ -270,6 +271,74 @@ def test_ensure_mutation_allowed_blocks_comprobante_cancellation_fields(sos_api)
         )
 
 
+def test_afip_workbook_marks_unsupported_vat_rates_for_verification(tmp_path, sos_api):
+    workbook_path = tmp_path / "mis-comprobantes.xlsx"
+    headers = [
+        "Fecha",
+        "Tipo",
+        "Punto de Venta",
+        "Número Desde",
+        "Número Hasta",
+        "Cód. Autorización",
+        "Nro. Doc. Emisor",
+        "Denominación Emisor",
+        "Neto Grav. IVA 0%",
+        "Neto Grav. IVA 2,5%",
+        "IVA 2,5%",
+        "Neto Grav. IVA 5%",
+        "IVA 5%",
+        "Neto Grav. IVA 10,5%",
+        "IVA 10,5%",
+        "Neto Grav. IVA 21%",
+        "IVA 21%",
+        "Neto Grav. IVA 27%",
+        "IVA 27%",
+        "Neto No Gravado",
+        "Op. Exentas",
+        "Otros Tributos",
+        "Imp. Total",
+    ]
+    values = [
+        "25/02/2026",
+        "1 - Factura A",
+        1,
+        10,
+        10,
+        "",
+        "30000000008",
+        "Proveedor Demo",
+        0,
+        100,
+        2.5,
+        200,
+        10,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        312.5,
+    ]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Mis Comprobantes Recibidos - CUIT 30000000000"])
+    sheet.append(headers)
+    sheet.append(values)
+    workbook.save(workbook_path)
+
+    payload = sos_api.read_afip_mis_comprobantes_workbook(workbook_path)
+
+    assert payload["rows"][0]["amounts_raw"]["neto_2_5"] == sos_api.Decimal("100")
+    assert payload["rows"][0]["amounts_raw"]["neto_5"] == sos_api.Decimal("200")
+    assert payload["rows"][0]["validation_errors"] == [
+        "Alícuotas de IVA no soportadas por el importador: 2,5%, 5%."
+    ]
+
+
 def test_build_afip_mis_comprobantes_draft_ignores_annulled_existing_purchase(tmp_path, sos_api, monkeypatch):
     workbook_path = tmp_path / "mis-comprobantes.xlsx"
     workbook_path.write_text("dummy", encoding="utf-8")
@@ -329,13 +398,13 @@ def test_build_afip_mis_comprobantes_draft_ignores_annulled_existing_purchase(tm
         "fetch_all_clientes_catalog",
         lambda client: {"30000000008": {"id": "2003", "clipro": "Proveedor Demo B S.A."}},
     )
-    monkeypatch.setattr(sos_api, "fetch_compra_consulta_items", lambda client, desde, hasta: [{"id": "800865875"}])
+    monkeypatch.setattr(sos_api, "fetch_compra_consulta_items", lambda client, desde, hasta: [{"id": "9001"}])
     monkeypatch.setattr(
         sos_api,
         "fetch_web_comprobante_status_index",
         lambda client, idtipo_operacion, desde_iso, hasta_iso: {
-            "800865875": {
-                "id": "800865875",
+            "9001": {
+                "id": "9001",
                 "comprobante": "A-0154-00009083",
                 "clipro": "Proveedor Demo B S.A.",
                 "cancelado": "1",
