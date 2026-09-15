@@ -2,7 +2,7 @@
 
 This guide is the human-oriented workflow for creating a receipt from a document without forcing the user to send a full JSON payload.
 
-It is not the default path for every SOS interaction. Use it only for document-driven receipt creation or update flows.
+It is not the default path for every SOS interaction. Use it only for document-driven receipt creation flows. Updates require a separately validated recipe in development.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Target flow:
 5. assistant shows the extracted result in Markdown tables
 6. user confirms
 7. assistant runs `cobro create --draft-id ... --confirm` for each approved draft
-8. if this document family needed special handling, assistant can offer `cobro profile create --draft-id ...` to save a local extraction profile for next time
+8. if this document family needs a new extraction profile, stop that discovery path and request explicit development mode; operational mode only consumes existing profiles
 
 ## When Multiple Files Arrive Together
 

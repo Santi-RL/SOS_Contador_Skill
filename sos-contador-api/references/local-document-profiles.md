@@ -1,5 +1,7 @@
 # Local Document Profiles
 
+Creating, editing or testing extraction rules requires explicit development mode. Operational mode only uses the existing profiles through the CLI; an extraction failure is not permission to design a new profile. Keep company facts and explicit user instructions separate from extraction design.
+
 Local document profiles are optional extraction overrides stored outside the public skill logic.
 
 They describe how to extract a recurring format, not how to account for a taxpayer's business. Keep current company instructions in the separate structure documented in [taxpayer-instructions.md](taxpayer-instructions.md); do not move these runtime profiles or merge their executable extraction rules into that guidance.
@@ -54,7 +56,7 @@ If no local profile matches, the generic parser remains the fallback.
 From a validated draft:
 
 ```powershell
-python scripts/sos_contador_api.py cobro profile create --draft-id abc123 --name "Cliente Demo OP PDF"
+python scripts/sos_contador_api.py --work-mode development cobro profile create --draft-id abc123 --name "Cliente Demo OP PDF"
 ```
 
 This creates a local starter profile using the confirmed draft as a scaffold.

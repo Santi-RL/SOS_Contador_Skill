@@ -1,5 +1,7 @@
 # Mis Comprobantes AFIP
 
+**Límite vigente:** en operativo usar solo `afip draft`. `afip import` reconstruye el borrador al confirmar y aún no garantiza congelación del lote; su escritura permanece suspendida incluso en validación controlada hasta completar D15. Se admite desarrollo con `--dry-run`. Revisar residuales tributarios y sentido emitidos/recibidos contra fuentes antes de probar. Seguir D15 de [development-roadmap.md](development-roadmap.md).
+
 This guide defines the analysis-first workflow for AFIP exports such as:
 
 - `Mis Comprobantes Recibidos - CUIT <cuit_trabajo>`
@@ -186,6 +188,8 @@ Suggested user-facing output tables:
 
 ## Counterparty Resolution
 
+Historical behavior below is not a validated supplier-role recipe. The basic `POST /cliente` body created a third party with client role; D06 must validate supplier role before promoting automatic supplier creation.
+
 Resolve the counterparty against SOS by CUIT first.
 
 For purchases:
@@ -330,9 +334,9 @@ For this workflow:
 - build drafts
 - show tables
 
-Never use this workflow to annul or replace an existing purchase unless the user explicitly asked for that cancellation path and the exact mechanism was validated first.
+Never use this workflow to annul or replace a purchase. Comprobante deletions remain blocked in every current mode; future cancellation support requires a separate implementation and explicit validation.
 
-Only after that, and only when the mutation path has been explicitly validated for the workspace, should the skill create the pending rows.
+Before re-enabling any import, implement and validate frozen payloads, source identity, counterparty roles and deterministic residual classification under D15. The current CLI blocks live import in all modes.
 
 ## Local CLI Workflow
 
@@ -340,8 +344,8 @@ The workspace now includes a dedicated helper for this file family:
 
 ```powershell
 python scripts/sos_contador_api.py afip draft --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx"
-python scripts/sos_contador_api.py afip import --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx" --dry-run
-python scripts/sos_contador_api.py afip import --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx" --confirm
+python scripts/sos_contador_api.py --work-mode development afip import --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx" --dry-run
+# No ejecutar importación real hasta congelar y validar el lote aprobado (D15).
 ```
 
 Observed behavior of that helper in this workspace:

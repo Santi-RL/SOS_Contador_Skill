@@ -44,6 +44,8 @@ No incorporar listas de facturas procesadas, importes de cada pago, resultados d
 
 ## Actualización sin crecimiento como log
 
+En operativo se pueden conservar instrucciones expresas y hechos comprobados propios de la empresa dentro del alcance pedido. Esto no autoriza diseñar perfiles, cambiar el parser, generalizar criterios inferidos o ampliar recetas públicas: esas acciones requieren desarrollo explícito.
+
 1. Distinguir una instrucción expresa del usuario, un hecho comprobado y una inferencia provisional. No promover automáticamente esta última a criterio definitivo.
 2. Actualizar la regla pertinente en su lugar. Integrar precisiones, sustituir la redacción superada y eliminar duplicaciones; no anexar un bloque por conversación o por factura.
 3. Mantener un punto de entrada corto. Separar por tema cuando mejore la consulta, con enlaces desde el índice; no repartir instrucciones entre carpetas mensuales.

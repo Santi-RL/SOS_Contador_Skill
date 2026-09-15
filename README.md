@@ -36,13 +36,17 @@ Las instrucciones vigentes de cada empresa tienen un punto de entrada privado y 
 
 ```powershell
 python -m pip install -r .\requirements-dev.txt
-python -m pytest -q
-python -m py_compile .\sos-contador-api\scripts\sos_contador_api.py
+$env:PYTHONDONTWRITEBYTECODE = "1"
+python -m pytest -q -p no:cacheprovider
 ```
 
 Además, validar el formato de la skill con las herramientas disponibles en la plataforma de destino. Todas las pruebas y ejemplos públicos deben usar entidades e identificadores inequívocamente ficticios.
 
 ## Alcance
+
+El CLI usa modo operativo por defecto. Los caminos no habilitados se detienen antes de autenticar; para investigar usar `--work-mode development` antes del subcomando. Ese modo permite consultas y previews, y no escribe aunque se agregue `--confirm`. Una prueba real necesita su autorización y `--work-mode controlled-validation`.
+
+Las [recetas operativas](sos-contador-api/references/operating-recipes.md) delimitan variantes de ventas, compras, cobranzas y pagos. [El roadmap](sos-contador-api/references/development-roadmap.md) guía el trabajo pendiente por operación. La importación histórica de planillas queda fuera de operativo hasta congelar el lote aprobado; el análisis `afip draft` permanece disponible. La emisión con CAE requiere validación fiscal separada.
 
 La skill prioriza la API pública. El transporte HTTP `web-session` es un fallback explícito para capacidades que la API no cubre y no reutiliza perfiles ni cookies del navegador.
 

@@ -12,9 +12,13 @@
 
 ## Fuente y alcance
 
-El archivo [public-api-operations.json](public-api-operations.json) registra las 71 solicitudes publicadas en la colección de Postman revisada el 30 de julio de 2026.
+El archivo [public-api-operations.json](public-api-operations.json) registra las 71 solicitudes de la colección de Postman contrastada completa el 5 de septiembre de 2026: 70 combinaciones únicas de método/ruta, con autenticación por CUIT repetida en dos grupos. Ver [auditoría de contratos y lecturas](api-read-audit.md) para diferencias documentales, parámetros observados y límites de cobertura.
 
-Cada operación define:
+Cada operación define (el campo `development_task` enlaza con el [roadmap](development-roadmap.md)):
+
+El CLI muestra también `operational_use`: `read` permite `api invoke` en operativo; `development-only` requiere desarrollo. Las escrituras genéricas nunca se habilitan en operativo por el solo estado `validated`.
+
+Campos:
 
 - ID estable para el CLI;
 - método y plantilla de path;
@@ -42,17 +46,17 @@ Inspeccionar una operación:
 python scripts/sos_contador_api.py api describe --operation venta.save
 ```
 
-Ejecutar una lectura:
+Ejecutar una lectura todavía documentada, en desarrollo:
 
 ```powershell
-python scripts/sos_contador_api.py api invoke --operation cae.status --cuit-trabajo <cuit_trabajo> --param id=<id_venta>
+python scripts/sos_contador_api.py --work-mode development api invoke --operation cae.status --cuit-trabajo <cuit_trabajo> --param id=<id_venta>
 ```
 
-Previsualizar y confirmar una escritura:
+Previsualizar una escritura de desarrollo y, solo después de aprobar ese caso concreto, ejecutarla en validación controlada:
 
 ```powershell
-python scripts/sos_contador_api.py api invoke --operation centrocosto.create --cuit-trabajo <cuit_trabajo> --body-file .\centro.json --dry-run
-python scripts/sos_contador_api.py api invoke --operation centrocosto.create --cuit-trabajo <cuit_trabajo> --body-file .\centro.json --confirm
+python scripts/sos_contador_api.py --work-mode development api invoke --operation centrocosto.create --cuit-trabajo <cuit_trabajo> --body-file .\centro.json --dry-run
+python scripts/sos_contador_api.py --work-mode controlled-validation api invoke --operation centrocosto.create --cuit-trabajo <cuit_trabajo> --body-file .\centro.json --confirm
 ```
 
 ## Parámetros
@@ -60,6 +64,8 @@ python scripts/sos_contador_api.py api invoke --operation centrocosto.create --c
 Usar `--param clave=valor` para reemplazar segmentos como `:id`, `:periodo` o `:ejercicio`. Los valores se codifican para impedir que alteren la estructura del path.
 
 Usar `--query clave=valor` solo para claves admitidas por la operación. El CLI rechaza parámetros desconocidos.
+
+En `compra.search`, `pagina` y `registros` se admiten por evidencia de lectura aunque no figuren en su ejemplo Postman. En las compras contrastadas, `pagina` es posición inicial desde 1; no tratarla como número de página ni extrapolar ese comportamiento a otros módulos. El recorrido automático de los helpers conserva su implementación anterior hasta completar D05.
 
 Usar `--body-json` o `--body-file`, nunca ambos. Consultar [public-api-payloads.md](public-api-payloads.md) para las estructuras documentadas.
 
@@ -69,7 +75,7 @@ Usar `--out` para respuestas binarias o exportaciones que deban persistir, por e
 
 | Estado | Significado |
 |---|---|
-| `validated` | Probado previamente contra respuestas reales o cubierto por un helper estable. |
+| `validated` | Estado histórico: respuestas reales o helper estable. Consultar guidance y receta para conocer qué variante se comprobó; no valida otras variantes. |
 | `documented` | Publicado por SOS, aún sin prueba específica en este proyecto. |
 | `documented-unvalidated` | Escritura publicada que requiere una prueba controlada antes de convertirse en ruta predeterminada. |
 | `limited` | Funciona, pero se observaron respuestas incompletas o inconsistentes. |

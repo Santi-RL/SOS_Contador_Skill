@@ -69,7 +69,7 @@ Por comprobante, extraer:
 
 La fecha extraída de una línea rotulada como `Fecha` tiene prioridad sobre fechas accesorias como inicio de actividades. El body de la API siempre usa `YYYY-MM-DD` en `fecha` y `fechaiva`.
 
-Conservar el código fiscal de origen además de `fcncnd` y letra. Para tique factura A (`081`), verificar primero la configuración del proveedor por PV según [capabilities-and-verification.md](capabilities-and-verification.md). Con esa configuración se comprobó una carga mediante el helper que conserva `081` en el Libro IVA, aunque su body no transporte un campo de subtipo. Un total correcto y un ID creado no bastan para validar su tipo fiscal; el importador de planillas requiere su propia verificación.
+Conservar el código fiscal de origen además de `fcncnd` y letra. Para tique factura A (`081`), el original define el subtipo; verificar antes que la ficha del proveedor cubra el PV mediante la configuración técnica descripta en [capabilities-and-verification.md](capabilities-and-verification.md). Si el original es `081` y el PV todavía no está configurado, detener la escritura: no registrarlo como `001` ni cambiar el código por analogía. Con la alternativa correcta se comprobó una carga mediante el helper que conserva `081` en el Libro IVA, aunque su body no transporte un campo de subtipo. Un total correcto y un ID creado no bastan para validar su tipo fiscal; el importador de planillas requiere su propia verificación.
 
 ## Correcciones estructuradas
 
@@ -136,6 +136,8 @@ Reglas para descuentos:
 
 Una percepción identificada como IIBB se registra con identificador `percepcioniibb` y conserva `idprovinciaiibb`. Un renglón genérico de “otros tributos” no se clasifica automáticamente: el borrador debe quedar para verificar hasta que se indique explícitamente si corresponde a no gravado, exento, percepción de IIBB u otra percepción. Cuando dos renglones repiten el mismo importe agregado, no sumarlos dos veces.
 
+Si la clasificación explícita elegida es `otros`, el helper la codifica como `percepcionotra` en la cuenta seleccionada. Ese identificador no demuestra que el concepto sea una percepción ni conserva por sí solo el desglose fiscal del original. En la variante comprobada, el detalle y el asiento conservaron el importe agregado, mientras el Libro IVA lo presentó como `no_gravado` y dejó en cero sus columnas específicas de impuestos. Usar `otros` únicamente cuando se haya resuelto la naturaleza de todos los componentes y la presentación agregada resulte aceptable. Si el comprobante exige informar componentes en columnas fiscales distintas, detener la carga: no sacrificar el desglose para que cierre el total.
+
 ## Deduplicación
 
 Consultar `POST /compra/consulta` con fechas ISO y abrir detalles con `GET /compra/detalle/:id` cuando haga falta. Si una consulta devuelve 50 filas, tratarla como potencialmente truncada y subdividir el período.
@@ -199,13 +201,13 @@ Después de crear:
 
 1. consultar `GET /compra/detalle/:id`;
 2. confirmar proveedor, tipo, letra, punto de venta y número;
-3. confirmar `cabecera.fecha`, todas las bases e IVA por alícuota y la percepción de IIBB;
+3. confirmar `cabecera.fecha`, todas las bases e IVA por alícuota, percepciones y demás tributos documentados;
 4. reconciliar el total redondeando a centavos;
 5. confirmar el ID en `POST /compra/consulta` para el período de la fecha persistida;
 6. confirmar que no tenga `cancelado=1`, `fechabaja` ni pertenezca a una sección de anulados.
 
 Una respuesta exitosa de creación no reemplaza esta verificación. En particular, la fecha operativa para la consulta del período es `cabecera.fecha`; otros campos de fecha pueden quedar vacíos en el detalle.
 
-Cuando el trabajo incluya impuestos o imputación contable, consultar además `libroiva.compras` para el período y `asiento.get` con el ID de compra. Revisar tipo fiscal, categoría, IVA computable, jurisdicción de percepciones y cuentas efectivas. La cuenta elegida por un antecedente o una importación automática no acredita que la naturaleza y el destino coincidan con la nueva compra.
+Cuando el trabajo incluya impuestos o imputación contable, consultar además `libroiva.compras` para el período y `asiento.get` con el ID de compra. Revisar tipo fiscal, categoría, IVA computable, jurisdicción de percepciones, columnas de otros impuestos y cuentas efectivas. Si se utilizó `otros`, comprobar expresamente en qué casillero del libro apareció y si el desglose del original permanece representado. La cuenta elegida por un antecedente o una importación automática no acredita que la naturaleza y el destino coincidan con la nueva compra.
 
 Este flujo no anula, elimina ni da de baja compras.

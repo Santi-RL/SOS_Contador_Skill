@@ -1,10 +1,12 @@
 # Capacidades comprobadas y verificación
 
-Leer para adaptar el plan de cuentas, configurar conceptos, reclasificar comprobantes o registrar pagos y asientos. Complementa el catálogo; no agrega endpoints ni convierte una función web en capacidad de la API pública.
+Referencia de evidencia para desarrollo y para interpretar límites de una lectura operativa. Complementa el catálogo; no agrega endpoints ni habilita rutas operativas. Las observaciones y correcciones web de este documento solo se investigan en desarrollo explícito y sus escrituras requieren validación controlada autorizada. En operativo, usar exclusivamente [operating-recipes.md](operating-recipes.md) y detenerse si falta la variante.
 
 ## Alcance de la evidencia
 
 Comportamientos contrastados en operaciones autorizadas y lecturas independientes, revisados en agosto de 2026. Se describe el alcance probado, no una garantía para toda instalación o variante. Una respuesta exitosa, un ID o un `--dry-run` no prueban que un campo se haya persistido. Los ejemplos son genéricos; la evidencia concreta permanece en el hogar privado.
+
+La [auditoría de lecturas del 05/09/2026](api-read-audit.md) agrega evidencia de compras: correspondencia de identidades e importes entre API y HTTP, cruce con Libro IVA, `pagina` como posición inicial desde 1 y consultas `pagina`/`registros` aceptadas por `compra.search` aunque no publicadas. No extiende esas conclusiones a cobranzas ni valida escrituras.
 
 ## Matriz de decisión
 
@@ -30,13 +32,11 @@ Comportamientos contrastados en operaciones autorizadas y lecturas independiente
 
 ## Elegir el transporte sin perder los límites
 
-1. Buscar el helper y la operación pública apropiados. No inventar un endpoint de escritura por analogía con un listado.
-2. Si hay una ruta HTTP `web-session` validada para la necesidad, usarla dentro de la autorización vigente. Un fallo de autenticación no justifica reutilizar cookies del navegador.
-3. Para alta/configuración de cuentas, actividades del contribuyente, configuración contable del producto y asociación de pagos, la implementación actual no ofrece un helper HTTP validado suficiente. También puede resultar insuficiente para un campo que la API no persiste o para las variantes de maestro y percepciones indicadas en la matriz. En esos casos se permite el navegador visible autorizado o la intervención del usuario, limitado al campo o acción pendiente. No hacer pruebas especulativas de endpoints internos.
-4. Leer el formulario y confirmar contribuyente, registro y selección antes de guardar. No reutilizar índices de filas después de ordenar, filtrar o cambiar de pantalla. Usar las capacidades permitidas por la herramienta de navegador, sin extraer credenciales ni tomar sesiones por fuera de ella.
-5. Reabrir el formulario o recargar y consultar por API lo que esta exponga. Si no se dispone de verificación suficiente, informar el alcance pendiente.
+La política vigente está en [safety-and-storage.md](safety-and-storage.md#transporte). En operativo no hay fallback a navegador; la matriz anterior registra hechos históricos y límites, no instrucciones para completar una acción no habilitada.
 
-El permiso ya concedido para el mismo cambio y transporte no se pide otra vez. Un nuevo efecto contable, un conjunto mayor de documentos o una acción destructiva sí requiere delimitar autorización. Consultar también [safety-and-storage.md](safety-and-storage.md).
+En desarrollo, consultar primero el contrato público y seleccionar el caso del [roadmap](development-roadmap.md). Si la API no publica un campo, dejar constancia de la ausencia; no declarar que es imposible ni inferir su body desde un formulario. La observación web de lectura puede aportar evidencia. Una prueba de escritura requiere preview, alcance y autorización propios, aunque la sesión ya esté abierta.
+
+En una prueba web autorizada, confirmar contribuyente y registro, no reutilizar índices después de ordenar/filtrar, preservar campos ajenos al cambio y reabrir después de guardar. Verificar por API lo que exponga y señalar lo que siga sin poder contrastarse. El permiso de acceso no autoriza efectos comerciales o fiscales.
 
 ## Preparar y comprobar una reclasificación
 
@@ -60,13 +60,15 @@ Para auditorías, cruzar también originales y registros en ambos sentidos: docu
 
 Al cambiar la condición fiscal del maestro, no interpretar la condición devuelta en una cabecera histórica como una copia inmutable de la situación del emisor a esa fecha. Contrastar tipo, letra, neto, IVA, original y asiento: una factura C anterior no adquiere IVA por el cambio actual del proveedor. En el libro, `codigoAFIP` cambió de 6 a 1 junto con MONO a RINS, mientras `codigocomprobanteafip` permaneció en 001: no confundir ambos campos. Si un Libro IVA devuelve vacío pese a compras conocidas, repetir la lectura de ese período de forma aislada y verificar fechas y cobertura antes de concluir que faltan registraciones; una relectura recuperó filas sin modificar comprobantes. No atribuir ese resultado al formato del mes ni a la concurrencia sin una prueba que lo demuestre.
 
-### Tiques factura y configuración por punto de venta
+### Tiques factura y configuración del proveedor
 
-Los códigos de origen `081` (tique factura A) y `001` (factura A) no son equivalentes. La [ayuda oficial de SOS](https://ayuda.sos-contador.com.ar/menu-inicio/Compras/c%C3%B3mo-cargar-compras-con-ticket-u-otros-tipos-de-comprobantes-que-no-sean-f) indica que el tipo de emisión se configura en la ficha del proveedor. Se comprobó la escritura web de **Tickets A y B** (valor `81`) como alternativa para puntos de venta concretos, conservando el tipo genérico y las demás alternativas. No confundir esa opción con **Tique** (`83`).
+Los códigos de origen `081` (tique factura A) y `001` (factura A) no son equivalentes. La [ayuda oficial de SOS](https://ayuda.sos-contador.com.ar/menu-inicio/Compras/c%C3%B3mo-cargar-compras-con-ticket-u-otros-tipos-de-comprobantes-que-no-sean-f) indica que el tipo de emisión se configura en la ficha del proveedor. El original determina el tipo fiscal; el punto de venta no convierte una factura en tique ni un tique en factura.
+
+En la ficha web observada, el selector genérico permanecía limitado a **_Facturas** y **Tickets A y B** (valor `81`) se configuraba mediante alternativas asociadas a puntos de venta concretos. Esta restricción técnica no debe convertirse en una regla contable. Cuando un proveedor emite tiques desde varios surtidores, cajas o locales, conservar `081` para cada original que lo indique y mantener configurados todos los PV conocidos que lo requieran. Un PV nuevo necesita comprobar la configuración antes de registrar; no degradarlo a `001` por no estar aún en la lista. No confundir **Tickets A y B** (`81`) con **Tique** (`83`).
 
 Para corregir esta configuración compartida:
 
-1. Validar código, proveedor y PV con los originales. Relevar compras del proveedor y libros de los períodos potencialmente afectados; autorizar ese alcance antes de guardar. No inferir que todos sus puntos de venta emiten el mismo tipo.
+1. Validar código, proveedor y PV con los originales. Relevar compras del proveedor y libros de los períodos potencialmente afectados; autorizar ese alcance antes de guardar. Una regla expresa del usuario puede establecer que todos los documentos de una operatoria del proveedor son tiques, pero el número de PV por sí solo no lo demuestra.
 2. Guardar la ficha completa y las lecturas previas de compras, asientos y libros. Si ni la API ni `web-session` cubren esos campos, editar la ficha web con la herramienta de navegador permitida. Seleccionar la alternativa y su PV en los controles visibles; no reemplazar la configuración genérica sin necesidad. Los controles observados se identifican como `comprobantecompra_alt` y `sucursal_alt`, con variantes numeradas para las alternativas adicionales; volver a inspeccionarlos en cada sesión.
 3. Tras guardar, reabrir y comparar todos los campos. Una respuesta API limitada del tercero no verifica sus alternativas de emisión.
 4. Volver a leer los libros y comparar por identidad fiscal, ignorando solo el orden de las filas. En el alcance probado, la configuración corrigió `codigocomprobanteafip` de compras anteriores sin reescribir sus importes ni sus asientos; otros documentos del mismo PV ya estaban en `081` y permanecieron iguales. Verificar también los PV no modificados. Este cambio no presenta ni rectifica declaraciones fiscales anteriores.
@@ -83,6 +85,8 @@ El campo resumido rotulado **No Grav** persistió como `nogravado`. **Total Otro
 Una percepción adicional cargada por la web puede aparecer como `percepcionotra` en `compra.get` aunque su cuenta y el Libro IVA la clasifiquen como IIBB de una jurisdicción concreta. Se observó también `montohaber` negativo en esa respuesta de detalle, mientras el asiento automático mostraba el débito correcto y estaba balanceado. No duplicar el importe ni reconstruir el asiento sumando indiscriminadamente ambos campos del detalle; contrastar con `asiento.get` y con las columnas provinciales del libro.
 
 El identificador `percepcionotra` tampoco demuestra por sí solo un crédito impositivo: una cuenta de gasto cargada desde **Imp y Perc** puede usarlo. Verificar cuenta, rubro, asiento y casillero del libro por separado. No elegir una cuenta de activo por su nombre tributario cuando el cargo no sea recuperable; si la cuenta de gasto altera la presentación fiscal, documentar el límite sin declarar concluida esa parte del control.
+
+El helper documental `compra draft/create` transforma el campo resuelto `otros` en una imputación `percepcionotra` sobre la cuenta seleccionada. En la variante comprobada, `compra.get` y `asiento.get` conservaron la cuenta y el importe agregado, pero `libroiva.compras` lo expuso en `no_gravado`, mantuvo en cero las columnas específicas `imp_int`, `imp_itc`, `imp_mun` e `imp_otr` y no conservó el desglose de los conceptos que formaban ese total. Por lo tanto, `otros` es un contenedor técnico agregado, no una categoría fiscal autosuficiente. Usarlo solo después de resolver la naturaleza de cada componente y cuando esa presentación agregada sea aceptable; si el tratamiento requiere columnas fiscales separadas, detener la carga hasta disponer de una variante que preserve el desglose. Verificar siempre original, detalle, asiento y Libro IVA.
 
 La ficha web del tercero informa que las modificaciones manuales o masivas de comprobantes actualizan ciertos valores predeterminados para importaciones futuras, con prioridad sobre la configuración general de la CUIT. Al definir reglas por proveedor, revisar la sección de importaciones de su ficha y no prometer automatismos a partir de una cuenta guardada. Esa indicación de la interfaz no demuestra que toda escritura API actualice los mismos valores. Tampoco cambiar globalmente la categoría de crédito fiscal de una cuenta compartida para corregir una sola compra sin revisar su alcance.
 

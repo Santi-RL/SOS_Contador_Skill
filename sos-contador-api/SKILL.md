@@ -1,144 +1,67 @@
 ---
 name: sos-contador-api
-description: Operar SOS Contador mediante su API pública y, solo cuando sea imprescindible, mediante HTTP web-session sin navegador. Usar para autenticar cuentas, resolver contribuyentes por nombre o CUIT, consultar o gestionar clientes, proveedores, productos, ventas, compras, cobros, pagos, recibos, asientos, libros IVA, mayor, sumas y saldos, CAE, centros de costo, puntos de venta, e-Ventanilla, índices y demás operaciones documentadas; también para importar comprobantes de ARCA/AFIP o crear compras y cobranzas desde documentos.
+description: Consultar y registrar operaciones de SOS Contador con CUIT explícita, recetas comprobadas, vista previa y verificación. Usar para ventas, compras, cobranzas, pagos y sus documentos; separar el desarrollo de capacidades nuevas de la operación real.
 ---
 
 # SOS Contador
 
-Operar con el CLI incluido y mantener explícito el CUIT de trabajo. Preferir helpers especializados para flujos validados y usar el catálogo declarativo para el resto de la API pública.
+Usar el CLI incluido. Priorizar la API pública **comprobada para la variante concreta**; `web-session` significa HTTP directo, no navegador. No descubrir rutas durante una tarea operativa.
 
-## Flujo principal
+## Elegir el modo
 
-1. Identificar la operación y si es lectura, consulta semántica o escritura.
-2. Resolver el contribuyente si el usuario lo nombró informalmente:
+Anunciar el modo en la primera respuesta. Inferirlo por el pedido; no exigir al usuario conocer sus nombres. Una solicitud explícita de revisar o mejorar la skill habilita desarrollo. Un fallo operativo no cambia el modo por sí solo.
+
+| Modo | Alcance | CLI |
+|---|---|---|
+| Operativo | Ejecutar únicamente recetas habilitadas, con datos reales y límites conocidos. | Predeterminado: `--work-mode operational`. |
+| Desarrollo | Auditar código, documentación, perfiles y capacidades; consultas y previews sin escritura comercial. | `--work-mode development`, antes del subcomando. |
+| Validación controlada | Probar una escritura real delimitada después de mostrar su preview y recibir autorización específica. | `--work-mode controlled-validation`, además de `--confirm`. |
+
+Desarrollo no autoriza pruebas de escritura. No agregar flags de desarrollo o validación para eludir un bloqueo operativo. En validación controlada indicar CUIT, operación, campos, efecto fiscal/contable, cantidad máxima y lectura de verificación; no prometer rollback de un comprobante fiscal.
+
+## Secuencia operativa
+
+1. Leer las preferencias privadas generales si existe `<SOS_CONTADOR_HOME>/local/INSTRUCCIONES.md`.
+2. Resolver el contribuyente por el catálogo; no confiar en memoria ni en el último seleccionado:
 
 ```powershell
 python scripts/sos_contador_api.py auth resolve-cuit --name "empresa demo"
 ```
 
-3. Fijar `--cuit-trabajo`, `--cuit-trabajo-id` o `--cuit-trabajo-nombre` en toda operación autenticada con JWTC. Buscar las instrucciones privadas de esa CUIT en `local/taxpayers/<nombre_cuit>/INSTRUCCIONES.md` y leer solo los temas pertinentes. Seguir [references/taxpayer-instructions.md](references/taxpayer-instructions.md) para localizarlas, consolidarlas o actualizarlas; no tratar informes de trabajos anteriores como reglas vigentes.
-4. Usar primero un helper especializado cuando exista. Para configuración contable, reclasificaciones, pagos o asientos, consultar también [references/capabilities-and-verification.md](references/capabilities-and-verification.md): la validación de una operación no garantiza todos sus campos ni todos sus modos.
-5. Para capacidades sin helper, consultar `api catalog` o `api describe` y ejecutar por ID estable con `api invoke`.
-6. Ejecutar lecturas directamente. Para escrituras, mostrar primero `--dry-run` y ejecutar con `--confirm` solo después de la confirmación explícita del usuario.
-7. Verificar el resultado de toda escritura mediante una lectura independiente.
+3. Fijar `--cuit-trabajo`, `--cuit-trabajo-id` o `--cuit-trabajo-nombre` en operaciones JWTC. Un borrador puede conservar la CUIT ya resuelta. Leer la entrada privada de esa empresa y solo los temas pertinentes conforme a [taxpayer-instructions.md](references/taxpayer-instructions.md).
+4. Elegir la receta exacta en [operating-recipes.md](references/operating-recipes.md). Consultar solo la referencia documental que esa receta necesita. `api catalog` y `api describe` informan capacidades; no habilitan por sí solos una operación.
+5. Para lecturas, ejecutar y comprobar filtros, período y cobertura. Para escrituras, resolver IDs, preparar el borrador o `--dry-run`, mostrarlo y comprobar autorización del efecto concreto **después de su vista previa**. Reutilizar una autorización vigente solo si cubre exactamente el mismo resultado ya presentado.
+6. Ejecutar con `--confirm` sin cambiar el contenido aprobado. Verificar con una lectura independiente identidad, campos, estado activo y efecto comercial/contable requerido. Un ID o HTTP exitoso no basta.
+7. Guardar evidencia privada y entregar el resultado. No editar scripts, catálogo, instrucciones públicas ni perfiles de extracción en modo operativo.
 
-La configuración estándar se carga desde variables de entorno o `~/.sos-contador/.env.local`. Permitir otra ubicación mediante `SOS_CONTADOR_HOME`. No volver a pedir credenciales si el archivo privado existe.
+La configuración proviene de variables de entorno o `<SOS_CONTADOR_HOME>/.env.local`; el hogar predeterminado es `~/.sos-contador`. No pedir credenciales disponibles ni seleccionar una CUIT por variables heredadas. Ver [auth.md](references/auth.md) solo para configurar o resolver problemas de acceso.
 
-Si existe `<SOS_CONTADOR_HOME>/local/INSTRUCCIONES.md`, leer sus preferencias generales de acceso y trabajo antes de pedir intervención. Respetar las autorizaciones expresas vigentes sin ampliarlas; ver [references/safety-and-storage.md](references/safety-and-storage.md). Los criterios de cada empresa siguen en su entrada de `local/taxpayers/`.
+## Cuándo detenerse
 
-## Helpers especializados
+Detener las escrituras si falta una receta para la variante, el borrador no cuadra, la identidad es ambigua, el campo no se conserva o la respuesta difiere de lo esperado. No improvisar scripts, parámetros, asociaciones, asientos compensatorios ni un recorrido web para completar el resultado.
 
-Usar estos comandos para los flujos ya validados:
+Se permiten las lecturas de verificación previstas por la receta para saber qué ocurrió. Ante timeout de escritura, **no reenviar**: el resultado puede haber sido registrado. Si no se puede determinar el estado, informar «resultado no confirmado» y detener ese trabajo.
 
-- `auth info|list-cuits|resolve-cuit|web-info`
-- `cliente list|get|create|update|delete`
-- `producto list|create|update`
-- `compra draft|create`
-- `cobro list|get|list-range|resolve-id|draft|create|asociar|profile`
-- `pago list|get|create`
-- `puntoventa list`
-- `venta list|list-all|get|search|pdf|create`
-- `afip draft|import`
+Explicar al usuario: «Esta variante no tiene un procedimiento validado / no produjo el resultado esperado. Para investigar necesitamos pasar a modo desarrollo; eso puede modificar la skill reutilizable. Cualquier prueba que escriba en SOS requiere un alcance y una aprobación aparte». Pedir esa decisión sin cambiar de modo unilateralmente. Completar otras consultas independientes que sigan siendo seguras.
 
-Usar el catálogo público para cualquier otra operación:
+## Límites comunes
 
-```powershell
-python scripts/sos_contador_api.py api catalog
-python scripts/sos_contador_api.py api catalog --module asiento
-python scripts/sos_contador_api.py api describe --operation indiceaniomes.list
-python scripts/sos_contador_api.py api invoke --operation indiceaniomes.list --cuit-trabajo <cuit_trabajo>
-python scripts/sos_contador_api.py api invoke --operation iva.list --cuit-trabajo <cuit_trabajo> --param ejercicio=2026 --query anio=2026 --query mes=07
-```
+- API pública primero dentro de las rutas habilitadas. Usar únicamente los fallbacks HTTP nombrados en la receta; un error no autoriza un transporte nuevo. Los detalles de cobro y PDF requieren `--allow-web-session-fallback` cuando el fallback esté autorizado.
+- No usar navegador en modo operativo. Las observaciones de UI de [capabilities-and-verification.md](references/capabilities-and-verification.md) son evidencia de desarrollo, no recetas alternativas. Un trabajo explícito sobre la UI es desarrollo y conserva sus límites de lectura/escritura.
+- Bajas/anulaciones de comprobantes bloqueadas. Una aprobación de alta no autoriza borrados, CAE, correos, configuraciones compartidas ni nuevas operaciones.
+- Separar registrar una venta, solicitar CAE, descargar PDF y enviar correo. La emisión con CAE todavía requiere validar su variante; no prometerla por disponer del flag `--obtienecae`.
+- Excluir de activos los registros con `cancelado=1`, `fechabaja` no vacía o sección `ANULADOS`, salvo consulta expresa sobre anulados.
+- Mantener documentos, CUIT, nombres, IDs, exportaciones, perfiles, capturas y secretos reales fuera de cualquier repositorio público. Respetar un destino privado local o remoto indicado por el usuario.
+- No borrar archivos preexistentes para ordenar. Aplicar [safety-and-storage.md](references/safety-and-storage.md) para estructura privada, destinos, temporales y limpieza con inventario.
 
-Leer [references/public-api.md](references/public-api.md) antes de usar una operación genérica. Leer [references/public-api-payloads.md](references/public-api-payloads.md) antes de preparar un body de escritura.
+## Desarrollo y aprendizaje
 
-## Reglas de seguridad
+Leer [development-roadmap.md](references/development-roadmap.md) antes de elegir una capacidad por investigar. Contiene prioridades, casos de prueba y criterios de promoción. El catálogo [public-api.md](references/public-api.md) describe contratos; la [matriz de evidencia](references/capabilities-and-verification.md) conserva límites observados. No confundir documentación, tests simulados y validación real.
 
-- No usar automatización de navegador, perfiles de navegador, cookies existentes ni toma de sesión para tareas normales.
-- Usar la API pública primero. Tratar `web-session` como fallback HTTP interno y frágil.
-- No cambiar automáticamente de transporte cuando falle una operación que debería funcionar por API. Diagnosticar primero y aplicar el alcance autorizado; pedir permiso para el fallback si aún no está autorizado.
-- No anular, cancelar, eliminar ni dar de baja un comprobante salvo pedido explícito para ese comprobante y mecanismo previamente validado.
-- Mantener bloqueados por defecto `compra.delete`, `venta.delete`, `cobro.delete` y `pago.delete`.
-- No incluir tokens, contraseñas, CUIT reales ni datos de clientes en archivos públicos, ejemplos, pruebas o documentación.
-- No imprimir tokens salvo pedido explícito del usuario mediante una opción diseñada para ello.
-- No confiar en IDs recordados. Resolverlos por catálogo o lectura.
-- Tratar como anulados los registros con `cancelado=1`, `fechabaja` no vacía o inclusión en una sección `ANULADOS`.
+Generalizar un hallazgo solo después de comprobarlo. Actualizar la regla existente, su receta, catálogo y pruebas ficticias; conservar payloads, respuestas e identificadores en el expediente privado. Los perfiles locales se diseñan y prueban en desarrollo; en operativo solo se consumen los existentes.
 
-Leer [references/safety-and-storage.md](references/safety-and-storage.md) para mutaciones, exportaciones, redacción de secretos y selección de transporte.
+## Terminal manual y salida
 
-## Ventas
+Si el usuario pide terminal sin scripts, seguir [manual-terminal-api.md](references/manual-terminal-api.md): un comando por vez, sin cargar `.env.local` ni usar helpers. Este formato no elimina los límites de modo, vista previa y autorización.
 
-- Consultar por rango exacto con `venta search` o `api invoke --operation venta.search`; este `POST` es una consulta y no una escritura.
-- Resolver un comprobante visible con el rango más estrecho disponible y comparar `factura`, fecha y cliente. Normalizar `A-00001-00000001` frente a `FA-0001-00000001`.
-- Si no hay fecha, pedirla una vez. Si el usuario no la conoce, buscar hacia atrás: 60 días, luego ventanas de 90 días, con límite inicial de 24 meses.
-- Si el usuario pide “facturas emitidas” y el período contiene notas de crédito o débito, preguntar si desea solo facturas o incluir también las notas. Si las incluye, devolver una sola tabla combinada.
-- La colección pública documenta `venta.save` (`PUT /venta/:id?`) para crear o modificar ventas. Mantenerla como `documented-unvalidated` hasta completar una prueba controlada; el helper histórico `venta create` sigue usando `web-session` por compatibilidad.
-
-## Cobros desde documentos
-
-Usar el flujo documental únicamente cuando la solicitud parte de PDF, imagen, TXT, CSV, XLSX o XLS:
-
-1. Agrupar archivos por recibo comercial.
-2. Crear un borrador por grupo con `cobro draft --preview-format markdown`.
-3. No unir archivos con distintos números de orden, fechas, facturas, totales o cheques.
-4. Mostrar contexto, movimientos, asociaciones, totales y campos faltantes.
-5. Esperar el OK explícito.
-6. Ejecutar un recibo por vez con `cobro create --draft-id <id> --confirm`.
-7. Verificar el recibo y sus asociaciones.
-
-Leer [references/cobro-from-document.md](references/cobro-from-document.md) para extracción y perfiles locales. Leer [references/cobro-create-and-associate.md](references/cobro-create-and-associate.md) para creación detallada y asociación.
-
-## Compras e importaciones ARCA/AFIP
-
-- Para “Mis Comprobantes Recibidos/Emitidos”, leer [references/mis-comprobantes-afip.md](references/mis-comprobantes-afip.md).
-- Para compras desde PDF o imágenes, leer [references/compra-from-pdf-folder.md](references/compra-from-pdf-folder.md).
-- Para auditar compras ya registradas contra una carpeta documental, normalizar originales, corregir imputaciones y cerrar un período, leer [references/auditoria-compras.md](references/auditoria-compras.md).
-- Si falta un comprobante y se necesita corroborar percepciones, consultar [references/percepciones-iibb-sin-comprobante.md](references/percepciones-iibb-sin-comprobante.md). Distinguir los registros fiscales del original y la información disponible de un período completo.
-- Priorizar, en este orden, texto digital embebido, lectura visual estructurada cuando el agente disponga de visión y OCR local como contraste. Si no hay visión disponible, permitir OCR como fuente primaria sujeto a todas las validaciones determinísticas y a la revisión del borrador.
-- Para OCR, usar español (`spa`) por defecto y recurrir a inglés (`eng`) solo cuando español no esté disponible. Si faltan ambos idiomas y tampoco existe otra extracción confiable, detener la extracción y reportar la configuración requerida; no inferir datos fiscales desde una lectura parcial.
-- Cuando una lectura estructurada y la extracción automática informen valores distintos para identidad, CUIT, fecha o importes, dejar el candidato en `verificar`. Resolver cada discrepancia contra el comprobante y declarar solo esos campos en `_reviewed_conflicts`; no aceptar conflictos en bloque.
-- En compras documentales, tratar cada `--source` como un comprobante independiente. No fusionar archivos salvo que sean páginas o vistas complementarias del mismo documento.
-- Crear primero `compra draft --source <archivo> --cuit-trabajo <cuit> --preview-format markdown`; mostrar el borrador y esperar el OK explícito.
-- Ejecutar después `compra create --draft-id <id> --confirm`. El comando debe usar sin modificaciones el payload y `uniqueid` congelados en el borrador aprobado.
-- Deducir el CUIT de trabajo únicamente de una sección inequívoca de comprador/receptor.
-- Validar el dígito verificador de todo CUIT extraído por OCR antes de buscar o crear un proveedor. Un CUIT inválido no demuestra que el proveedor falte.
-- Antes de crear un proveedor o elegir una imputación, buscar el maestro por CUIT válido y revisar compras activas anteriores del mismo proveedor cuando existan.
-- Reutilizar cuenta, centro de costo y tratamiento impositivo solo desde antecedentes comercialmente análogos; no copiar fechas, numeración ni importes.
-- Separar neto e IVA por alícuota. Si el comprobante informa descuentos por alícuota, aplicarlos al neto correspondiente antes de armar las imputaciones; no volver a cargarlos en `descuento` cuando el neto impreso ya es final.
-- Registrar una percepción provincial identificada como IIBB en `percepcioniibb` y conservar `idprovinciaiibb`; dejar para verificar cualquier total genérico de otros tributos hasta clasificarlo explícitamente como no gravado, exento, percepción de IIBB u otra percepción.
-- Deduplicar al preparar el borrador y repetir la comprobación inmediatamente antes de escribir.
-- Si `compra.search` devuelve 50 filas, tratar el resultado como potencialmente truncado y subdividir el rango de fechas.
-- En compras, usar fechas ISO `YYYY-MM-DD` en `fecha` y `fechaiva`.
-- Mantener positivas las notas de crédito de compra y representar su naturaleza con `fcncnd` y `tipocomprobante`.
-- Interpretar `tipocomprobante` como código fiscal, no como un identificador interno descartable: `1/001` es Factura A común y `201` es Factura de Crédito Electrónica MiPyMEs A. No determinar el subtipo solo por letra y `fcncnd`; si original, detalle y Libro IVA discrepan, aplicar los controles de [capabilities-and-verification.md](references/capabilities-and-verification.md) antes de escribir.
-- Verificar después de crear: identidad del comprobante, proveedor, fecha persistida, todas las alícuotas, percepción de IIBB, total redondeado a centavos, presencia en el período y estado activo.
-
-## Configuración contable, pagos y reclasificaciones
-
-- Separar cuenta contable, distribución por función, actividad, centro de costo y producto/concepto. Configurar uno no configura automáticamente los demás.
-- Clasificar por naturaleza y destino documentados al trabajo, no solamente por proveedor. Una regla particular del contribuyente permanece en sus instrucciones privadas.
-- Verificar los campos persistidos después de guardar y el asiento o mayor cuando el objetivo sea contable. La cabecera de un pago no prueba su contrapartida automática, y un asiento no demuestra una asociación comercial.
-- Cuando API y fallback HTTP carezcan de una ruta suficiente para el campo requerido, usar el flujo web visible autorizado con los límites de [capabilities-and-verification.md](references/capabilities-and-verification.md). No generalizar ese acceso a otras operaciones.
-
-## Modo terminal manual
-
-Si el usuario pide trabajar manualmente, sin scripts o solo desde Postman:
-
-- No usar `scripts/sos_contador_api.py`.
-- No cargar `.env.local` automáticamente.
-- Guiar un comando de PowerShell por vez y esperar confirmación.
-- Seguir `POST /login`, `GET /cuit/credentials/:idcuit` y luego la operación comercial.
-- Registrar hallazgos en [references/manual-terminal-api.md](references/manual-terminal-api.md).
-
-## Salida y almacenamiento
-
-- Presentar conjuntos de registros en tablas Markdown.
-- Usar prosa para un solo detalle o una respuesta demasiado ancha.
-- No mencionar el transporte en respuestas normales salvo que afecte alcance o confiabilidad.
-- Respetar el destino privado indicado por el usuario. Por defecto, guardar exportaciones bajo `<SOS_CONTADOR_HOME>/local/exports/<nombre_cuit>/<tipo>/<YYYY>/<MM>/`, con fecha ISO al comienzo del nombre y clave `<nombre_normalizado>__<CUIT_formateada>`; localizar directorios existentes por CUIT antes de crear otro.
-- Mantener capturas, perfiles, PDFs, datos reales y notas de diagnóstico únicamente bajo `<SOS_CONTADOR_HOME>/local/`, fuera de la skill instalada.
-- Mantener instrucciones vigentes por empresa en `local/taxpayers/`, sin dividirlas por año, mes o tarea. Los expedientes en `local/jobs/` conservan evidencia e historial, no la fuente principal de instrucciones.
-
-## Límites documentales
-
-Tratar como experimentales las operaciones cuyo propio documento es incompleto o contradictorio, como `cuentacorriente.list`. `mayor.list` funciona con JWTC, pero tiene límites de filtrado documentados. No inferir cuerpos, filtros ni semántica destructiva ausente. Validar primero con una lectura o un `--dry-run` y documentar solo reglas generalizables.
+Presentar conjuntos de registros en tablas Markdown; un detalle puede usar prosa. No explicar transportes salvo diagnóstico o una limitación material. Si pidió «facturas» y hay notas de crédito/débito en el período, preguntar si las incluye y, si acepta, devolver una sola tabla combinada.

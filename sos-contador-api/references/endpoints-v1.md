@@ -1,5 +1,7 @@
 # Endpoints V1
 
+Historical technical reference for development. Operational agents use [operating-recipes.md](operating-recipes.md), not these low-level examples. A published endpoint or observed UI result does not enable a new variant. Raw `call` and generic writes require an explicit development/controlled-validation mode.
+
 Source references:
 
 - [SOS Contador API - Postman Documenter](https://documenter.getpostman.com/view/1566360/SWTD6vnC?version=latest)
@@ -333,8 +335,8 @@ These are available through the documented operation catalog even when they do n
 python scripts/sos_contador_api.py api invoke --operation provincia.list --cuit-trabajo <cuit_trabajo>
 python scripts/sos_contador_api.py api invoke --operation cuentacontable.list --cuit-trabajo <cuit_trabajo>
 python scripts/sos_contador_api.py api invoke --operation indiceaniomes.list --cuit-trabajo <cuit_trabajo>
-python scripts/sos_contador_api.py call --auth-mode jwtc --cuit-trabajo <cuit_trabajo> --method POST --path venta/consulta --query pagina=1 --query registros=50 --body-file .\venta-filtros.json --dry-run
-python scripts/sos_contador_api.py call --auth-mode jwtc --cuit-trabajo <cuit_trabajo> --method GET --path cuentacontable/listado --out "$env:SOS_CONTADOR_HOME\local\exports\<cuit_trabajo>\plan_de_cuentas\2026\04\2026-04-10-plan-de-cuentas-<cuit_trabajo>.json"
+python scripts/sos_contador_api.py --work-mode development call --auth-mode jwtc --cuit-trabajo <cuit_trabajo> --method POST --path venta/consulta --query pagina=1 --query registros=50 --body-file .\venta-filtros.json --dry-run
+python scripts/sos_contador_api.py --work-mode development call --auth-mode jwtc --cuit-trabajo <cuit_trabajo> --method GET --path cuentacontable/listado --out "$env:SOS_CONTADOR_HOME\local\exports\<cuit_trabajo>\plan_de_cuentas\2026\04\2026-04-10-plan-de-cuentas-<cuit_trabajo>.json"
 ```
 
 ## Mutation Guardrails
@@ -364,7 +366,7 @@ This skill must default to non-destructive comprobante handling.
 - No auto-resolution for every numeric dependency. In v1, `idcuenta` and `idcentrocosto` should usually be passed explicitly.
 - The `abustosp/sos-api` repo suggests IVA batch reads, but it does not document enough of the `iva/listado` path variants to enable a dedicated helper here without first validating them against the real API.
 - Internal web endpoints are less stable than the public API and may change without notice.
-- The web-session can still show intermittent timeouts; the CLI now retries timeout-like failures automatically before surfacing an error.
+- The web-session can show intermittent timeouts. The CLI retries only known reads; business writes are sent once. Consult state after an ambiguous write and never retry it automatically.
 
 
 

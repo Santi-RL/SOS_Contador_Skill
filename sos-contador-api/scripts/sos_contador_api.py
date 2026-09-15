@@ -155,6 +155,22 @@ SENSITIVE_PREVIEW_KEYS = {
 }
 HTTP_RETRY_ATTEMPTS = 3
 HTTP_RETRY_SLEEP_SECONDS = 0.5
+
+
+def request_attempts(method: str, path: str, *, web: bool = False, payload: Any = None) -> int:
+    """A timeout after a write is ambiguous; never send the write again."""
+    method = method.upper()
+    route = path.strip("/").lower()
+    if method == "GET":
+        return HTTP_RETRY_ATTEMPTS
+    if method == "POST" and not web and route in {"login", "venta/consulta", "compra/consulta"}:
+        return HTTP_RETRY_ATTEMPTS
+    if method == "POST" and web and route == "back/xml.asp" and isinstance(payload, dict):
+        if payload.get("object") in {
+            "comprobante_listado", "comprobante_historia", "comprobante_ultimo_numero", "cobropago_compraventa"
+        }:
+            return HTTP_RETRY_ATTEMPTS
+    return 1
 DEPRECATED_WORK_CUIT_ENV_KEYS = (
     "SOS_CONTADOR_CUIT_ID",
     "SOS_CUIT_ID",
@@ -1147,7 +1163,8 @@ class SOSContadorClient:
 
         request = urllib.request.Request(url=url, data=data, headers=headers, method=method.upper())
         last_error: BaseException | None = None
-        for attempt in range(HTTP_RETRY_ATTEMPTS):
+        attempts = request_attempts(method, path)
+        for attempt in range(attempts):
             try:
                 with urllib.request.urlopen(request, timeout=60, context=self.ssl_context) as response:
                     raw = response.read()
@@ -1166,7 +1183,7 @@ class SOSContadorClient:
                         "Actualice las dependencias del skill o configure SOS_CONTADOR_CA_BUNDLE "
                         "con un archivo PEM confiable; no desactive la verificacion TLS."
                     ) from exc
-                if attempt + 1 >= HTTP_RETRY_ATTEMPTS or not is_timeout_exception(exc):
+                if attempt + 1 >= attempts or not is_timeout_exception(exc):
                     raise CLIError(f"No se pudo conectar con SOS Contador API: {reason}") from exc
                 time.sleep(HTTP_RETRY_SLEEP_SECONDS * (attempt + 1))
         raise CLIError(f"No se pudo conectar con SOS Contador API: {last_error}")
@@ -1554,7 +1571,8 @@ class SOSContadorWebClient:
             data = encode_form_data(form)
         request = urllib.request.Request(url=url, data=data, headers=headers, method=method.upper())
         last_error: BaseException | None = None
-        for attempt in range(HTTP_RETRY_ATTEMPTS):
+        attempts = request_attempts(method, path, web=True, payload=form)
+        for attempt in range(attempts):
             try:
                 with self.opener.open(request, timeout=60) as response:
                     raw = response.read()
@@ -1566,7 +1584,7 @@ class SOSContadorWebClient:
                 raise CLIError(f"HTTP {exc.code} {exc.reason}\n{detail}") from exc
             except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
                 last_error = exc
-                if attempt + 1 >= HTTP_RETRY_ATTEMPTS or not is_timeout_exception(exc):
+                if attempt + 1 >= attempts or not is_timeout_exception(exc):
                     raise CLIError(
                         f"No se pudo conectar con la web-session de SOS Contador: {getattr(exc, 'reason', exc)}"
                     ) from exc
@@ -1613,7 +1631,8 @@ class SOSContadorWebClient:
         data = json.dumps(body or {}, ensure_ascii=True).encode("utf-8")
         request = urllib.request.Request(url=url, data=data, headers=headers, method=method.upper())
         last_error: BaseException | None = None
-        for attempt in range(HTTP_RETRY_ATTEMPTS):
+        attempts = request_attempts(method, path, web=True, payload=body)
+        for attempt in range(attempts):
             try:
                 with self.opener.open(request, timeout=60) as response:
                     raw = response.read()
@@ -1625,7 +1644,7 @@ class SOSContadorWebClient:
                 raise CLIError(f"HTTP {exc.code} {exc.reason}\n{detail}") from exc
             except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
                 last_error = exc
-                if attempt + 1 >= HTTP_RETRY_ATTEMPTS or not is_timeout_exception(exc):
+                if attempt + 1 >= attempts or not is_timeout_exception(exc):
                     raise CLIError(
                         f"No se pudo conectar con la web-session de SOS Contador: {getattr(exc, 'reason', exc)}"
                     ) from exc
@@ -1678,8 +1697,16 @@ def build_url(base_url: str, path: str, query: list[tuple[str, str]] | None = No
 def write_binary_output(path: str, raw: bytes) -> str:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(raw)
+    try:
+        with destination.open("xb") as stream:
+            stream.write(raw)
+    except FileExistsError as exc:
+        raise CLIError("El archivo de salida ya existe; no se sobrescribe.") from exc
     return str(destination)
+
+
+def write_new_json_output(path: Path, payload: Any) -> None:
+    write_binary_output(str(path), json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"))
 
 
 def encode_form_data(form: dict[str, Any]) -> bytes:
@@ -2188,6 +2215,14 @@ def ensure_mutation_allowed(method: str, path: str, query: list[tuple[str, str]]
     if getattr(args, "dry_run", False):
         print(format_output(preview))
         raise SystemExit(0)
+    if getattr(args, "work_mode", None) == "development":
+        raise CLIError(
+            "Modo desarrollo: escritura real bloqueada, incluso con --confirm. "
+            "Prepare --dry-run y obtenga autorización antes de usar --work-mode controlled-validation."
+        )
+    if isinstance(body, dict) and str(body.get("obtienecae", "false")).strip().lower() not in {"false", "0", "", "none"}:
+        if getattr(args, "work_mode", None) != "controlled-validation" or not getattr(args, "approve_cae", False):
+            raise CLIError("Obtención de CAE bloqueada: requiere validación controlada y --approve-cae autorizado.")
     if not getattr(args, "confirm", False):
         print(format_output(preview), file=sys.stderr)
         raise CLIError("Operacion de escritura bloqueada. Revise el preview y vuelva a ejecutar con --confirm.")
@@ -5604,6 +5639,8 @@ def command_api_catalog(args: argparse.Namespace, client: SOSContadorClient) -> 
                 "side_effect": bool(item.get("side_effect")),
                 "invokable": item.get("invokable", True),
                 "summary": item.get("summary", ""),
+                "operational_use": public_api_operational_use(item),
+                "development_task": item.get("development_task"),
             }
             for item in operations
         ],
@@ -5612,7 +5649,14 @@ def command_api_catalog(args: argparse.Namespace, client: SOSContadorClient) -> 
 
 def command_api_describe(args: argparse.Namespace, client: SOSContadorClient) -> Any:
     del client
-    return public_api_operation(args.operation)
+    operation = public_api_operation(args.operation)
+    return {**operation, "operational_use": public_api_operational_use(operation)}
+
+
+def public_api_operational_use(operation: dict[str, Any]) -> str:
+    if not operation.get("side_effect") and operation.get("status") in {"validated", "limited"}:
+        return "read"
+    return "development-only"
 
 
 def command_api_invoke(args: argparse.Namespace, client: SOSContadorClient) -> Any:
@@ -5943,6 +5987,12 @@ def command_cobro_get(args: argparse.Namespace, client: SOSContadorClient) -> An
             "payload": api_payload,
         }
 
+    if not getattr(args, "allow_web_session_fallback", False):
+        raise CLIError(
+            "El detalle API del cobro falló o está incompleto. No se cambió de transporte. "
+            "Use --allow-web-session-fallback solo para el fallback ya documentado y autorizado; "
+            "si necesita diagnosticar o descubrir otra ruta, solicite pasar a modo desarrollo."
+        )
     web_client = SOSContadorWebClient(api_client=bound_client)
     web_payload = web_client.get_comprobante_historia(idcomprobante=cobro_id, idtipo_operacion=12)
     return {
@@ -5960,7 +6010,7 @@ def command_cobro_draft(args: argparse.Namespace, client: SOSContadorClient) -> 
     preview_markdown = render_cobro_draft_markdown(draft)
     if getattr(args, "json_out", None):
         destination = Path(args.json_out)
-        save_json_file(destination, draft)
+        write_new_json_output(destination, draft)
         draft["json_written_to"] = str(destination)
     preview_format = str(getattr(args, "preview_format", "json") or "json").strip().lower()
     if preview_format == "markdown":
@@ -6089,7 +6139,7 @@ def command_cobro_list_range(args: argparse.Namespace, client: SOSContadorClient
         csv_text = web_client.export_comprobantes_csv(idtipo_operacion=12, desde=desde, hasta=hasta)
         destination = Path(args.csv_out)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(csv_text, encoding="utf-8")
+        write_binary_output(str(destination), csv_text.encode("utf-8"))
         result["csv_written_to"] = str(destination)
         result["csv_rows"] = len(parse_csv_rows(csv_text))
     return result
@@ -6893,7 +6943,7 @@ def command_afip_draft(args: argparse.Namespace, client: SOSContadorClient) -> A
     preview_markdown = render_afip_draft_markdown(draft)
     if getattr(args, "json_out", None):
         destination = Path(args.json_out)
-        save_json_file(destination, draft)
+        write_new_json_output(destination, draft)
         draft["json_written_to"] = str(destination)
     return {
         "draft_id": draft.get("draft_id"),
@@ -7867,7 +7917,7 @@ def command_compra_draft(args: argparse.Namespace, client: SOSContadorClient) ->
     preview_markdown = render_compra_draft_markdown(draft)
     if getattr(args, "json_out", None):
         destination = Path(args.json_out)
-        save_json_file(destination, draft)
+        write_new_json_output(destination, draft)
         draft["json_written_to"] = str(destination)
     preview_format = str(getattr(args, "preview_format", "both") or "both").strip().lower()
     if preview_format == "markdown":
@@ -8156,8 +8206,90 @@ def add_afip_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json-out")
 
 
+def ensure_work_mode_allowed(args: argparse.Namespace) -> None:
+    """Gate CLI entrypoints before authentication, IO or business mutations.
+
+    This is an agent guardrail, not an authorization service: the user authorizes
+    the scope in conversation. Direct Python imports are development interfaces.
+    """
+    mode = args.work_mode
+    if (args.command == "afip" and getattr(args, "afip_command", "") == "import"
+            and not getattr(args, "dry_run", False)):
+        raise CLIError(
+            "Importación real suspendida: el importador aún reconstruye el lote aprobado. "
+            "Use afip draft o --work-mode development afip import --dry-run y resuelva D15 antes de escribir."
+        )
+    if mode != "operational":
+        return
+    command = args.command
+    action = getattr(args, f"{command}_command", "")
+    allowed = {
+        "auth": {"info", "list-cuits", "resolve-cuit", "web-info"},
+        "api": {"catalog", "describe", "invoke"},
+        "cliente": {"list", "get", "create"},
+        "producto": {"list", "create"},
+        "compra": {"draft", "create"},
+        "cobro": {"list", "get", "list-range", "resolve-id", "draft", "create", "asociar"},
+        "pago": {"list", "get", "create"},
+        "venta": {"list", "list-all", "get", "search", "pdf", "create"},
+        "puntoventa": {"list"},
+        "afip": {"draft"},
+    }
+    reason = None
+    if action not in allowed.get(command, set()):
+        reason = "La acción no tiene una receta operativa habilitada."
+    elif command == "api" and action == "invoke":
+        operation = public_api_operation(args.operation)
+        if public_api_operational_use(operation) != "read":
+            reason = "La invocación genérica operativa admite solo lecturas comprobadas."
+    elif command in {"venta", "cobro", "pago"} and action == "create":
+        if getattr(args, "body_json", None) or getattr(args, "body_file", None):
+            reason = "Use los campos del helper o un borrador validado; los cuerpos libres son de desarrollo."
+        elif getattr(args, "obtienecae", False):
+            reason = "La emisión con CAE requiere validar primero su variante fiscal."
+        elif command == "pago" and (getattr(args, "movimientos_json", None) or getattr(args, "movimientos_file", None)):
+            reason = "El pago operativo solo admite medios básicos en imputaciones; cheques y retenciones están pendientes."
+    elif command in {"cliente", "producto"} and action == "create":
+        body = load_json_source(getattr(args, "body_json", None), getattr(args, "body_file", None))
+        fields = {
+            "cliente": {"cuit", "clipro", "idprovincia", "idtipocondicioniva", "email"},
+            "producto": {"codigo", "producto", "idproductoservicio", "idunidad", "idcentrocosto",
+                         "idgrupomodi", "tasaiva", "precio1", "precio2", "precio3", "precio4", "precio5",
+                         "costo", "excluirIIBB", "memo", "visible"},
+        }
+        if body is not None and (not isinstance(body, dict) or set(body) - fields[command]):
+            reason = "El alta básica del maestro no admite campos fuera del contrato comprobado."
+    if reason:
+        raise CLIError(
+            f"{reason} Detenga la operación y solicite pasar a modo desarrollo. "
+            "Desarrollo permite revisar/modificar la skill y realizar consultas; "
+            "las pruebas de escritura real requieren una vista previa y autorización específica."
+        )
+
+
+def ensure_cli_storage_allowed(args: argparse.Namespace) -> None:
+    boundary = SKILL_ROOT.parent if (SKILL_ROOT.parent / ".git").exists() else SKILL_ROOT
+    boundary = boundary.resolve()
+    if RUNTIME_HOME.is_relative_to(boundary):
+        raise CLIError("SOS_CONTADOR_HOME debe estar fuera del repositorio o paquete público.")
+    for name in ("out", "json_out", "csv_out"):
+        value = getattr(args, name, None)
+        if not value:
+            continue
+        destination = Path(value).expanduser().resolve()
+        if destination.is_relative_to(boundary) or any((parent / ".git").exists() for parent in destination.parents):
+            raise CLIError("No se permite guardar evidencia operativa dentro de un repositorio.")
+        if destination.exists():
+            raise CLIError("El archivo de salida ya existe. Elija otro nombre; no se sobrescribe.")
+        setattr(args, name, str(destination))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CLI helper para la API de SOS Contador")
+    parser.add_argument("--work-mode", choices=("operational", "development", "controlled-validation"),
+                        default="operational", help="Modo explícito; desarrollo permite lecturas y previews.")
+    parser.add_argument("--approve-cae", action="store_true",
+                        help="Solo validación controlada: emisión fiscal autorizada tras revisar el preview.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     auth = subparsers.add_parser("auth")
@@ -8315,6 +8447,7 @@ def build_parser() -> argparse.ArgumentParser:
     cobro_get.add_argument("--cliente-cuit")
     cobro_get.add_argument("--cliente-nombre")
     cobro_get.add_argument("--registros", type=int, default=500)
+    cobro_get.add_argument("--allow-web-session-fallback", action="store_true")
     cobro_get.set_defaults(handler=command_cobro_get)
 
     cobro_list_range = cobro_sub.add_parser("list-range")
@@ -8477,8 +8610,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    client = SOSContadorClient()
     try:
+        ensure_work_mode_allowed(args)
+        ensure_cli_storage_allowed(args)
+        client = SOSContadorClient()
         result = args.handler(args, client)
     except APIError as exc:
         print(str(exc), file=sys.stderr)

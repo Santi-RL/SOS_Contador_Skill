@@ -13,7 +13,7 @@
 
 ## Reglas
 
-Tomar estas estructuras como punto de partida documental, no como garantía de aceptación. Reemplazar todos los marcadores, ejecutar `--dry-run` y validar IDs contra la CUIT de trabajo.
+Tomar estas estructuras como punto de partida documental de desarrollo, no como garantía de aceptación ni permiso operativo. Las escrituras genéricas requieren preview en desarrollo y ejecución en validación controlada autorizada; en operativo usar la receta del helper exacto. Reemplazar todos los marcadores, ejecutar `--dry-run` y validar IDs contra la CUIT de trabajo.
 
 No copiar estos ejemplos con valores reales a archivos públicos. Generar `uniqueid` nuevos para cada comprobante que lo requiera.
 

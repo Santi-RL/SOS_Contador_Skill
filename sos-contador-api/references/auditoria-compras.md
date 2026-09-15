@@ -1,5 +1,7 @@
 # Auditoría de compras por período
 
+Esta auditoría permite las lecturas previstas; las correcciones que no tienen receta operativa requieren desarrollo y validación controlada. No reconstruir cuerpos libres para reclasificar en operativo.
+
 Usar cuando el objetivo sea revisar compras ya registradas en SOS Contador contra una carpeta documental, corregir importes o imputaciones y dejar un cierre verificable. Para crear compras nuevas desde documentos, usar [compra-from-pdf-folder.md](compra-from-pdf-folder.md). Para campos y transportes comprobados, consultar [capabilities-and-verification.md](capabilities-and-verification.md).
 
 ## Resultado esperado
@@ -93,7 +95,7 @@ Una categoría fiscal puede cambiar la presentación en el Libro IVA sin modific
 1. Conservar la lectura previa y describir el cambio por comprobante.
 2. Mostrar vista previa o `--dry-run`; obtener autorización explícita para el conjunto delimitado.
 3. Usar la API pública cuando el campo esté cubierto. `compra.save` no es un PATCH: preservar identidad y todos los campos que no deben cambiar.
-4. Cuando la API no persista el campo o el helper no represente la variante necesaria, usar solo el fallback autorizado y comprobado. El navegador visible queda limitado al campo pendiente y requiere reabrir el formulario después de guardar.
+4. Si la API no persiste el campo o falta una receta para la variante, detener las escrituras y solicitar desarrollo. No completar por navegador en operativo. Las observaciones históricas de UI requieren desarrollo explícito y sus escrituras, una prueba controlada autorizada.
 5. Ante timeout o respuesta ambigua, leer el estado antes de repetir. No recrear una compra para reparar una actualización incierta.
 
 Para avanzar con rapidez sin perder control, agrupar lecturas independientes y reutilizar sus salidas privadas. Ejecutar mutaciones en secuencia. Tras una tanda pequeña, verificar cada registro modificado y volver a leer una sola vez el período completo para detectar efectos laterales.

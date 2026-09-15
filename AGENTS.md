@@ -1,139 +1,33 @@
-# Workspace Routing
+# Instrucciones del proyecto
 
-## SOS Contador First
+## Entrada y modos
 
-This workspace contains a local skill at:
+Leer primero [sos-contador-api/SKILL.md](sos-contador-api/SKILL.md). Esa entrada define los modos y las recetas; no duplicar sus procedimientos en este archivo. Anunciar el modo inferido en español. Un pedido de operar datos reales es operativo; una solicitud explícita de revisar/mejorar la skill es desarrollo. No escalar de operativo por iniciativa del agente.
 
-- `./sos-contador-api/SKILL.md`
+En operativo, usar únicamente CLI y recetas comprobadas para la variante. Ante capacidad ausente, resultado inesperado o escritura ambigua: detener esa acción, verificar por lecturas previstas e informar que investigar requiere desarrollo. No cambiar código, reglas públicas, perfiles de extracción, transporte ni diseño para completar el pedido. La validación de escritura real necesita preview y aprobación específica; desarrollo por sí solo no la autoriza.
 
-For any request involving SOS Contador operations, open and use that skill first before considering any other approach.
+## API, seguridad y datos privados
 
-If the prompt names a contribuyente informally, such as `empresa demo`, resolve it through the local SOS skill before running the business query. Do not guess the target CUIT from memory.
+Priorizar API pública comprobada. HTTP `web-session` es un fallback incorporado para las recetas expresas; no es navegador. El navegador se limita al desarrollo explícito sobre una capacidad/UI, sin escritura implícita. No reutilizar perfiles, cookies ni credenciales del navegador por fuera de la herramienta autorizada.
 
-Examples that must route to the local SOS skill first:
+Usar credenciales de `<SOS_CONTADOR_HOME>/.env.local` (por defecto `~/.sos-contador/.env.local`); no pedirlas de nuevo si existen. Resolver el contribuyente por catálogo y mantenerlo explícito. Si falta un dato, pedir solo el faltante; no exigir una CUIT predeterminada en configuración.
 
-- "Conectate a mi cuenta de SOS Contador"
-- "Dame el listado de recibos"
-- "Dame el detalle del recibo 51"
-- "Listá cobranzas"
-- "Traé ventas, pagos, clientes o productos de SOS Contador"
+Todo trabajo real —emisores/contribuyentes, clientes, proveedores, documentación, reglas, perfiles, capturas, exports y diagnóstico— queda fuera del repositorio. Un `.gitignore` no sustituye esa separación ni elimina archivos ya versionados. Publicar exclusivamente código genérico, instrucciones portables y fixtures ficticios determinísticos. No incluir datos reales, rutas personales ni identificadores de una cuenta en diffs, mensajes de commit o revisiones externas.
 
-## Browser Rule
+Respetar directorios privados locales o remotos elegidos por el usuario. Por defecto seguir [safety-and-storage.md](sos-contador-api/references/safety-and-storage.md), incluida su limpieza con inventario; nunca borrar documentos preexistentes o fuentes para ordenar. Leer instrucciones vigentes por empresa según [taxpayer-instructions.md](sos-contador-api/references/taxpayer-instructions.md).
 
-Do not use browser automation, browser-profile inspection, cookie reuse, or browser-session takeover for standard SOS Contador data tasks.
+El modo terminal manual sigue su referencia y los mismos límites; sus hallazgos concretos permanecen privados. Solo desarrollo puede integrar reglas generalizadas en la guía pública.
 
-Use browser automation only when:
+## Desarrollo y revisión
 
-- the user explicitly asks to debug the SOS web UI itself, or
-- the local SOS skill explicitly indicates that both the public API and the direct HTTP `web-session` fallback are insufficient for the requested task.
+- Empezar por [development-roadmap.md](sos-contador-api/references/development-roadmap.md); definir caso, evidencia y criterio de promoción. No marcar una variante validada por un mock, un dry-run o un ID aislado.
+- Mantener `SKILL.md` breve y referencias por tarea. Conservar una fuente principal por regla. Cambios contables particulares pertenecen a instrucciones privadas, no a la lógica pública.
+- Ejecutar pruebas enfocadas y checks pertinentes. Revisión adicional de cambios en autenticación, sesiones, CUIT, documentos, salidas y portabilidad. Verificar hallazgos contra el código real.
+- Obtener autorización explícita antes de enviar código o artefactos a un revisor externo. Mantener integraciones de proveedor/plataforma opcionales; el CLI no depende de ellas.
+- Los temporales de pruebas se generan fuera del checkout; usar el directorio temporal del sistema, `PYTHONDONTWRITEBYTECODE=1` y pytest sin cache local. No usar `--basetemp` sobre un directorio preexistente con documentos: pytest puede vaciarlo.
+- No hacer commit, push, publicación ni reescritura de historial sin pedido correspondiente. Antes de publicar, inspeccionar archivos versionados y diff por datos privados, además de `.gitignore`.
+- No exigir herramientas de revisión/desarrollo durante consultas operativas.
 
-## Local Credentials
+## Idioma
 
-Assume the standard private credential source is:
-
-- `<SOS_CONTADOR_HOME>/.env.local`, defaulting to `~/.sos-contador/.env.local`
-
-If that file is present, do not ask for credentials again.
-If credentials or a default CUIT are missing, ask one short follow-up and stop there.
-
-## Public Skill Hygiene
-
-This skill is intended to be developed locally, tested with real SOS Contador accounts, and later shared publicly so other SOS Contador users can connect their own agents to the API.
-
-Public skill files must stay generic and portable:
-
-- Do not add real user, client, provider, person, company, CUIT, email, address, account ID, invoice ID, receipt ID, browser path, or machine-specific path to `SKILL.md`, `scripts/`, `references/`, `agents/`, examples, schemas, tests, or any other file intended to ship with the skill.
-- Use placeholders in documentation, such as `<cuit_trabajo>`, `<cliente_nombre>`, `<id_venta>`, `<usuario@example.com>`, or clearly fake demo names such as `Empresa Demo S.R.L.`.
-- Tests may use deterministic fake values only. Do not copy real API payloads, real PDFs, real export rows, or real customer names into committed fixtures.
-- Store local captures, real exports, draft caches, profiles, PDFs, screenshots, and troubleshooting notes that mention real entities only under `<SOS_CONTADOR_HOME>/local/`, outside this repository.
-- If a real case teaches a new rule, copy only the generalized rule into public docs and move the concrete evidence to the private runtime home.
-
-## Manual Terminal API Mode
-
-When the user says they want to access SOS Contador manually from the terminal, without local scripts, or based only on the Postman API documentation, switch to manual terminal guidance.
-
-Rules for that mode:
-
-- Do not use `scripts/sos_contador_api.py` or any local helper command.
-- Do not auto-load `.env.local`; the user will type credentials, CUIT, and IDs manually.
-- Guide the user one terminal command at a time and wait for confirmation before continuing.
-- Prefer PowerShell `Invoke-RestMethod` for JSON API requests.
-- Keep a running record of correct methods, failed methods, and useful API findings in `./sos-contador-api/references/manual-terminal-api.md`.
-- Use the public API flow from the Postman documentation first: `POST /login`, then `GET /cuit/credentials/:idcuit`, then the relevant business endpoint.
-
-## Private Instructions And Operational Storage
-
-After resolving a taxpayer, read its current private `INSTRUCCIONES.md` and relevant linked topics as described in `sos-contador-api/references/taxpayer-instructions.md`. The default entrypoint is `<SOS_CONTADOR_HOME>/local/taxpayers/<normalized_name>__<formatted_cuit>/INSTRUCCIONES.md`. Match existing directories by CUIT before creating another. Keep instructions current by editing the applicable rule, not appending a log per task.
-
-Keep job evidence under `local/jobs/<name_cuit>/<YYYY>/<MM>/<job_id>/` and instructions outside the dated jobs. Historical reports may link to the current instructions but must not become competing sources of rules. Extraction profiles keep their existing runtime layout.
-
-Respect an explicit private output destination. Otherwise store exports under `<SOS_CONTADOR_HOME>/local/exports/<name_cuit>/<artifact_kind>/<YYYY>/<MM>/`, with an ISO date prefix and stable kinds such as `plan_de_cuentas`, `ventas`, `compras` or `asientos`. Preserve existing CUIT-only directories rather than renaming them automatically. Follow `sos-contador-api/references/safety-and-storage.md` for source files, backups and privacy.
-
-## Output Format
-
-For SOS Contador responses that show a set of records, prefer a Markdown table by default.
-
-Examples:
-
-- receipt lists
-- cobranza lists
-- ventas lists
-- client or product search results
-
-Use prose instead of a table only when:
-
-- the response is a single detailed record, or
-- the dataset is too wide for a readable table
-
-For normal user-facing SOS Contador queries, do not add technical commentary about whether the result came from `api` or `web-session`.
-
-Mention transport details only when:
-
-- the user explicitly asks how the data was obtained,
-- the task is debugging or improving the skill itself, or
-- the transport choice materially affects the meaning, completeness, or reliability of the result.
-
-For SOS Contador sales queries phrased as `facturas` or `facturas emitidas`, do not assume that the user wants to exclude credit notes or debit notes when those documents also exist in the same filtered period.
-
-If matching notes exist, ask one short follow-up before finalizing the answer:
-
-- whether to show only invoices, or
-- invoices plus credit/debit notes
-
-If the user chooses to include those notes, return a single combined table for the period instead of separate lists.
-
-## Multi-Document Receipt Rule
-
-For SOS Contador document-driven receipt work, do not assume that multiple files belong to the same recibo.
-
-Use a single `cobro draft --source ... --source ...` only when the files are complementary pieces of one business document, for example:
-
-- front/back scans of the same order
-- continuation pages of the same exported PDF
-- annexes that complete the same receipt
-
-If the files show different order numbers, fechas, invoice references, totals, or cheque sets, split them into separate drafts and create one receipt per group.
-
-If a draft preview merges multiple independent orders into one recibo, stop that path and rerun the workflow with one draft per document group before writing anything.
-
-## Repository Safety
-
-- `<SOS_CONTADOR_HOME>/.env.local` is private and must remain outside the repository.
-- `./sos-contador-api/.env.local.example` is the public setup template that should be committed.
-- Keep this file generic and portable; do not add machine-specific paths or user-specific secrets.
-- Keep real-world examples out of public skill files; use `<SOS_CONTADOR_HOME>/local/` for anything concrete from local client work.
-
-## Agent Compatibility
-
-- Keep the core workflow independent of any specific AI agent, vendor, plugin, named reviewer, browser framework, or local development utility.
-- Express requirements in terms of capabilities and outcomes, such as running tests, reviewing security-sensitive changes, requesting approval before sharing code externally, and verifying writes with an independent read.
-- Keep optional platform integrations isolated in dedicated adapter files. Their absence must not prevent use of the CLI or the instructions in `SKILL.md`.
-
-## Development And Release Quality
-
-- Run focused automated tests and relevant manual checks for non-trivial code or skill changes.
-- Review changes that affect authentication, environment loading, API sessions, CUIT-scoped data, local exports, document handling, or public portability with additional security care.
-- Treat automated or independent review findings as advisory and verify each finding against the real code path before editing.
-- Obtain explicit authorization before sending source code, artifacts, or data to an external review service.
-- Use repository-wide maintenance audits only for deliberate maintenance work or when a findings backlog is requested.
-- Do not require development-review tooling for ordinary SOS data queries, local exports, or documentation-only usage.
+Usar español profesional completo en texto de usuario: tildes, ñ y signos de apertura. ASCII solo para identificadores o formatos técnicos que lo necesiten. Revisar ortografía y enlaces antes de entregar.

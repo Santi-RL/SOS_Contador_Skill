@@ -411,6 +411,31 @@ def test_compra_structured_zero_is_an_amount_not_a_missing_value(sos_api, zero):
     assert fields["amounts"]["total"] == sos_api.Decimal("357.00")
 
 
+def test_compra_otros_uses_percepcionotra_without_reclassifying_as_nogravado(sos_api):
+    fields = {
+        "amounts": {
+            "neto_21": sos_api.Decimal("100.00"),
+            "otros": sos_api.Decimal("10.00"),
+        },
+        "fecha": "2026-01-01",
+        "idclipro": "7001",
+        "proveedor_cuit": "30000000015",
+        "fcncnd": "F",
+        "letra": "A",
+        "puntoventa": 2,
+        "numero": 77,
+        "idprovinciaiibb": "1",
+        "idcentrocosto": "8200",
+        "idcuenta": "8100",
+    }
+
+    body = sos_api.build_compra_body_from_fields(fields)
+    imputaciones = body["imputaciones"][0]["imputa"]
+
+    assert {"i": "percepcionotra", "a": 0.0, "v": 10.0} in imputaciones
+    assert not any(item["i"] == "nogravado" for item in imputaciones)
+
+
 @pytest.mark.parametrize("missing", [None, "", " "])
 def test_missing_amount_is_not_silently_replaced_with_zero(sos_api, missing):
     with pytest.raises(sos_api.CLIError, match="Monto vacio"):
