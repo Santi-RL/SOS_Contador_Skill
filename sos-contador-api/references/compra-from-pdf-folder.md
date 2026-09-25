@@ -6,6 +6,7 @@ Este flujo registra comprobantes de compra provenientes de PDF, imagen o texto. 
 
 1. Resolver explícitamente el CUIT de trabajo.
 2. Tratar cada archivo como un comprobante independiente.
+   Si su nombre es genérico o no sigue el criterio de la carpeta, aplicar la [propuesta de nombre sin renombrado automático](safety-and-storage.md#instrucciones-vigentes-y-expedientes).
 3. Extraer identidad, proveedor e importes por alícuota.
 4. Resolver el proveedor existente y consultar antecedentes activos comparables.
 5. Deduplicar contra SOS Contador.

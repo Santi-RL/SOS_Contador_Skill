@@ -38,7 +38,7 @@ Comparar también fecha, netos e IVA por alícuota, no gravado, exento, tributos
 
 ## Ordenar y renombrar documentos
 
-Cuando el usuario pida normalizar nombres, preparar primero un mapa `origen → destino` y revisarlo antes de cambiar archivos. Una forma legible es:
+Seguir la [regla de propuesta y consentimiento](safety-and-storage.md#instrucciones-vigentes-y-expedientes): un nombre genérico justifica ofrecer una alternativa, no cambiarlo por cuenta propia. Cuando el usuario pida normalizar nombres, preparar primero un mapa `origen → destino` y revisarlo antes de cambiar archivos. Una forma legible es:
 
 ```text
 <PROVEEDOR>_<CUIT>_<TIPO>_<PV>_<NUMERO>.<ext>

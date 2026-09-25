@@ -101,6 +101,8 @@ Localizar directorios existentes por CUIT antes de crear uno. La clave con nombr
 
 Mantener las reglas de cada empresa en `local/taxpayers/<nombre_cuit>/INSTRUCCIONES.md` y los temas enlazados que necesite. Leer y actualizar conforme a [taxpayer-instructions.md](taxpayer-instructions.md). No incluir fechas en sus nombres ni acumular entradas de ejecución.
 
+Si un comprobante aportado para registrar tiene un nombre genérico o ajeno al criterio de su carpeta, leer primero el original y los nombres existentes y **proponer** al usuario un nombre concreto y coherente en ese mismo destino. Basar la propuesta en la identidad fiscal comprobada, conservar la extensión y distinguir facturas de otros respaldos. No renombrar ni mover automáticamente: la autorización para registrar o archivar no autoriza el cambio de nombre. Si el usuario aprueba la ruta exacta, comprobar colisiones, duplicados y referencias al nombre anterior; conservar un mapa privado de origen, destino y hash, y verificar la integridad tras el cambio. Si no aprueba, continuar con el documento bajo su nombre actual.
+
 Conservar fuentes, borradores, respuestas y entregables de una tarea en `local/jobs/<nombre_cuit>/<YYYY>/<MM>/<job_id>/{sources,drafts,results,artifacts}/`. Esos archivos aportan evidencia; no sustituyen las instrucciones vigentes. Si el usuario indicó una fuente existente, leerla allí sin moverla ni duplicarla por esta convención.
 
 ## Estructura privada completa
