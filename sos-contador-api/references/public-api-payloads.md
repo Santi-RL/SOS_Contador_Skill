@@ -253,11 +253,29 @@ En pagos sencillos, `imputaciones[].cuid` corresponde a la cuenta del medio de p
 
 Mantener cada base en una imputación separada según su alícuota. Registrar la percepción provincial identificada como IIBB con `i="percepcioniibb"` y conservar `idprovinciaiibb`; no convertir automáticamente otros tributos genéricos en IIBB. Si el neto ya refleja descuentos, mantener `descuento=0` para no duplicarlos.
 
-El ejemplo con una jurisdicción no cubre percepciones simultáneas de provincias diferentes. No agruparlas bajo `idprovinciaiibb` ni reutilizar un detalle de lectura como body. Consultar la alternativa web y su verificación en [capabilities-and-verification.md](capabilities-and-verification.md).
+Para percepciones IIBB simultáneas de distintas jurisdicciones, la estructura comprobada conserva **una sola** agrupación exterior. `idprovinciaiibb` y `percepcioniibb` representan la jurisdicción de cabecera; cada percepción adicional se agrega dentro de la misma lista `imputa` como `percepcionotra`, con el ID de su cuenta específica en el `cuid` del elemento interno:
+
+```json
+{
+  "idprovinciaiibb": "<id_jurisdiccion_cabecera>",
+  "imputaciones": [
+    {
+      "cuid": "<id_cuenta_principal>",
+      "imputa": [
+        {"i":"neto","a":21.0,"v":100.0},
+        {"i":"percepcioniibb","a":0,"v":5.0},
+        {"i":"percepcionotra","a":0,"v":3.0,"cuid":"<id_cuenta_iibb_adicional>"}
+      ]
+    }
+  ]
+}
+```
+
+No crear una agrupación exterior por cuenta: en la variante descartada SOS aceptó la solicitud, pero no respetó la cuenta adicional y presentó mal el importe en el Libro IVA. `percepcionotra` no identifica por sí sola un impuesto o una jurisdicción; la cuenta debe resolverse en el catálogo vigente y su efecto se valida con detalle, asiento y columnas jurisdiccionales del Libro IVA. El helper documental básico todavía no construye esta variante; usar el body completo solo en desarrollo o validación controlada. Ver [capabilities-and-verification.md](capabilities-and-verification.md).
 
 Omitir `idcuenta` solo cuando se acepte que SOS asigne su valor predeterminado. Para documentos usar preferentemente `compra draft` y `compra create`, que congelan el payload aprobado, repiten la deduplicación antes de escribir y verifican el resultado. Verificar siempre la fecha persistida, todas las alícuotas y que el comprobante permanezca activo.
 
-Para corregir una compra existente, usar su ID comprobado, no `id=0`. Reconstruir el body completo conservando identidad, fecha, tipo, numeración, CAE, jurisdicción, centro y otros campos ajenos al cambio; no enviar el objeto de detalle sin transformar. En el detalle, `imputaciones[].cuid` puede ser el identificador de una línea; el `cuid` de escritura de esta estructura debe contener el **ID de la cuenta**, resuelto desde `idcuenta` y el catálogo. Si no se dispone del `uniqueid` anterior, la variante probada aceptó uno nuevo con el mismo ID de compra; no extenderlo a tipos o condiciones no ensayados.
+Para corregir una compra existente, usar su ID comprobado, no `id=0`. Reconstruir el body completo conservando identidad, fecha, tipo, numeración, CAE, jurisdicción, centro y otros campos ajenos al cambio; no enviar el objeto de detalle sin transformar. En el detalle, `imputaciones[].cuid` puede ser el identificador de una línea; el `cuid` de escritura de esta estructura debe contener el **ID de la cuenta**, resuelto desde `idcuenta` y el catálogo. Un `cuid` dentro de `imputa[]` también debe ser un ID de cuenta, no el identificador de la línea leída. Si no se dispone del `uniqueid` anterior, la variante probada aceptó uno nuevo con el mismo ID de compra; no extenderlo a tipos o condiciones no ensayados.
 
 Se comprobó el cambio de cuenta y netos y la eliminación de una percepción no respaldada. En una variante ficticia repetida, retirar la imputación `i="percepcioniibb"` y agregar su importe a `i="nogravado"`, con alícuota cero y en la cuenta de costo, conservó total, IVA, asiento y código fiscal efectivo; si ya existe `nogravado`, sumar allí el importe en vez de duplicar la imputación. No es una regla para clasificar tributos: decidirla con el original y el criterio aprobado. No usar percepciones para compensar redondeos. No tratar `codactividad` como un cambio garantizado: el servidor aceptó una solicitud sin persistirlo. Verificar cuenta de cabecera, cuentas de líneas, actividad, centro e importes después de guardar, con las condiciones de [capabilities-and-verification.md](capabilities-and-verification.md).
 

@@ -107,7 +107,7 @@ Antes de configurar cuentas, conceptos, puntos de venta, centros o actividades, 
 - `cuentacorriente.list` es experimental porque Postman indica que no está implementada.
 - `mayor.list` se comprobó con JWTC, aunque Postman omite la autenticación explícita. Su estado es `limited`: puede devolver el ejercicio completo aunque se pidan fechas más estrechas. Comprobar el rango efectivo, cuenta y completitud; un error no equivale a ausencia de movimientos.
 - `centrocosto.create` devolvió `id: 0` sin alta comprobada; volver a listar antes de decidir un fallback o reintento.
-- `compra.save` permitió corregir cuenta e imputaciones, pero no persistió el cambio de `codactividad` en el caso observado.
+- `compra.save` permitió corregir cuenta e imputaciones y separar IIBB de distintas jurisdicciones con una agrupación exterior única y cuentas adicionales en los elementos internos. Varias agrupaciones exteriores produjeron una clasificación incorrecta y se bloquean en el CLI. El cambio de `codactividad` no persistió en el caso observado.
 - `puntoventa.update` permitió cambiar actividad; comparar además los campos no solicitados, como `ticket`.
 - `asiento.save` se comprobó para alta sin ID. La edición y baja requieren validación independiente.
 - `pago.save` permite registrar un pago, pero la cuenta de cabecera no garantiza la contrapartida de su asiento ni la aplicación a facturas.

@@ -177,6 +177,54 @@ def test_documented_sale_write_requires_preview_confirmation(sos_api, monkeypatc
     assert "venta.save" in capsys.readouterr().out
 
 
+def test_compra_save_rejects_multiple_outer_imputation_groups(sos_api):
+    body = {
+        "imputaciones": [
+            {"cuid": "3001", "imputa": [{"i": "neto", "a": 21.0, "v": 100.0}]},
+            {"cuid": "3002", "imputa": [{"i": "percepcionotra", "a": 0, "v": 5.0}]},
+        ]
+    }
+
+    with pytest.raises(sos_api.CLIError, match="una sola agrupación exterior"):
+        sos_api.validate_compra_save_imputation_shape(body)
+
+
+def test_compra_save_allows_additional_account_in_nested_imputation(sos_api):
+    body = {
+        "imputaciones": [
+            {
+                "cuid": "3001",
+                "imputa": [
+                    {"i": "neto", "a": 21.0, "v": 100.0},
+                    {"i": "percepcioniibb", "a": 0, "v": 5.0},
+                    {"i": "percepcionotra", "a": 0, "v": 3.0, "cuid": "3002"},
+                ],
+            }
+        ]
+    }
+
+    sos_api.validate_compra_save_imputation_shape(body)
+
+
+def test_generic_call_cannot_bypass_compra_save_imputation_guard(sos_api):
+    args = invoke_args(
+        "unused",
+        method="PUT",
+        path="compra/123",
+        body_json=json.dumps(
+            {
+                "imputaciones": [
+                    {"cuid": "3001", "imputa": [{"i": "neto", "a": 21.0, "v": 100.0}]},
+                    {"cuid": "3002", "imputa": [{"i": "percepcionotra", "a": 0, "v": 5.0}]},
+                ]
+            }
+        ),
+    )
+
+    with pytest.raises(sos_api.CLIError, match="una sola agrupación exterior"):
+        sos_api.command_call(args, FakeClient())
+
+
 def test_comprobante_delete_remains_blocked(sos_api, monkeypatch):
     client = FakeClient()
     monkeypatch.setattr(

@@ -2080,12 +2080,30 @@ def validate_operation_query(operation: dict[str, Any], query: list[tuple[str, s
         )
 
 
+def validate_compra_save_imputation_shape(body: Any) -> None:
+    if isinstance(body, dict):
+        imputaciones = body.get("imputaciones")
+        if isinstance(imputaciones, list) and len(imputaciones) > 1:
+            raise CLIError(
+                "compra.save admite una sola agrupación exterior en imputaciones. "
+                "Consolide las partidas en su lista imputa y, para una cuenta adicional, "
+                "indique el ID de cuenta en el cuid del elemento interno."
+            )
+
+
+def is_compra_save_request(method: str, path: str) -> bool:
+    return method.upper() == "PUT" and re.fullmatch(r"compra/[0-9]+", path.strip("/").lower()) is not None
+
+
 def validate_operation_body(operation: dict[str, Any], body: Any) -> None:
     body_mode = str(operation.get("body") or "none")
     if body_mode == "required" and body is None:
         raise CLIError(f"{operation['id']} requiere --body-json o --body-file.")
     if body_mode == "none" and body is not None:
         raise CLIError(f"{operation['id']} no admite un body.")
+
+    if str(operation.get("id") or "") == "compra.save":
+        validate_compra_save_imputation_shape(body)
 
 
 def redact_sensitive_payload(payload: Any) -> Any:
@@ -2207,6 +2225,8 @@ def payload_cancellation_hints(payload: Any, *, prefix: str = "body") -> list[st
 def ensure_mutation_allowed(method: str, path: str, query: list[tuple[str, str]] | None, body: Any, args: argparse.Namespace) -> None:
     if method.upper() not in MUTATING_METHODS:
         return
+    if is_compra_save_request(method, path):
+        validate_compra_save_imputation_shape(body)
     if is_comprobante_mutation_path(path):
         if method.upper() == "DELETE":
             raise CLIError(
@@ -5777,6 +5797,8 @@ def command_api_invoke(args: argparse.Namespace, client: SOSContadorClient) -> A
 def command_call(args: argparse.Namespace, client: SOSContadorClient) -> Any:
     body = load_json_source(args.body_json, args.body_file)
     query = [parse_key_value(item) for item in args.query or []]
+    if is_compra_save_request(args.method, args.path):
+        validate_compra_save_imputation_shape(body)
     bound_client = client
     work_target = None
     if getattr(args, "auth_mode", "jwtc") == "jwtc":
