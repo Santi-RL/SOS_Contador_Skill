@@ -56,7 +56,7 @@ Explicar al usuario: «Esta variante no tiene un procedimiento validado / no pro
 
 ## Desarrollo y aprendizaje
 
-Leer [development-roadmap.md](references/development-roadmap.md) antes de elegir una capacidad por investigar. Contiene prioridades, casos de prueba y criterios de promoción. El catálogo [public-api.md](references/public-api.md) describe contratos; la [matriz de evidencia](references/capabilities-and-verification.md) conserva límites observados. No confundir documentación, tests simulados y validación real.
+Leer [development-roadmap.md](references/development-roadmap.md) antes de elegir una capacidad por investigar. Contiene prioridades, el método de pruebas en empresa ficticia y criterios de promoción. Aplicar ese método antes de ensayar variantes nuevas sobre una empresa real. El catálogo [public-api.md](references/public-api.md) describe contratos; la [matriz de evidencia](references/capabilities-and-verification.md) conserva límites observados. No confundir documentación, tests simulados y validación real.
 
 Generalizar un hallazgo solo después de comprobarlo. Actualizar la regla existente, su receta, catálogo y pruebas ficticias; conservar payloads, respuestas e identificadores en el expediente privado. Los perfiles locales se diseñan y prueban en desarrollo; en operativo solo se consumen los existentes.
 
