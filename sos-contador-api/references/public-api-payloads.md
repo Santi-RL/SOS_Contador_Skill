@@ -279,6 +279,26 @@ Para corregir una compra existente, usar su ID comprobado, no `id=0`. Reconstrui
 
 Se comprobó el cambio de cuenta y netos y la eliminación de una percepción no respaldada. En una variante ficticia repetida, retirar la imputación `i="percepcioniibb"` y agregar su importe a `i="nogravado"`, con alícuota cero y en la cuenta de costo, conservó total, IVA, asiento y código fiscal efectivo; si ya existe `nogravado`, sumar allí el importe en vez de duplicar la imputación. No es una regla para clasificar tributos: decidirla con el original y el criterio aprobado. No usar percepciones para compensar redondeos. No tratar `codactividad` como un cambio garantizado: el servidor aceptó una solicitud sin persistirlo. Verificar cuenta de cabecera, cuentas de líneas, actividad, centro e importes después de guardar, con las condiciones de [capabilities-and-verification.md](capabilities-and-verification.md).
 
+### Netos en dos cuentas dentro de una compra
+
+En un ensayo ficticio sin CAE se comprobó la edición de una factura A: una sola agrupación exterior, dos partidas `neto` al 21 % y el ID de cuenta en el `cuid` de cada partida interna. El detalle conservó las dos cuentas y el asiento automático repartió sus netos, manteniendo IVA, total e identidad. Ejemplo estructural genérico, no payload listo para enviar:
+
+```json
+{
+  "imputaciones": [{
+    "cuid": "<id_cuenta_cabecera>",
+    "imputa": [
+      {"i":"neto","a":21,"v":75,"cuid":"<id_cuenta_gasto>"},
+      {"i":"neto","a":21,"v":125,"cuid":"<id_cuenta_activo>"}
+    ]
+  }]
+}
+```
+
+**Límite fiscal observado:** `libroiva.compras` conservó las bases, IVA y total, pero devolvió una sola categoría `creditofiscal` para el documento, correspondiente a la cuenta de cabecera en ese caso. No se comprobó una distribución fiscal entre gasto y activo ni el comportamiento de otras exportaciones. No presentar esta variante como solución fiscal completa, cambiar la cabecera para forzar una categoría ni modificar cuentas compartidas para compensarlo.
+
+El alcance es una edición con dos cuentas, misma alícuota, sin productos ni CAE. No valida otras alícuotas, notas, alta directa con dos cuentas, conceptos del maestro de productos ni conservación de CAE existente. Mantener validación controlada, body completo y aprobación propia para la aplicación real. Si el objetivo requiere repartir categorías fiscales, detener esa parte hasta validar el reporte correspondiente. No quitar el bloqueo de varias agrupaciones exteriores.
+
 ## Ventas
 
 `venta.save` está documentada pero aún no fue validada mediante una escritura controlada en este proyecto. Para crear, omitir `--param id`; para modificar, usar `--param id=<id_venta>`.
