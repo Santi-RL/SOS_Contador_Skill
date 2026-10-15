@@ -85,7 +85,7 @@ Usar `--out` para respuestas binarias o exportaciones que deban persistir, por e
 
 ## Alcance comprobado y límites
 
-El estado se refiere al alcance descrito en `summary` y `guidance`, consultables con `api describe`. Un alta validada no valida también la edición, la baja o todos los campos de la entidad. La fecha `reviewed_at` corresponde a la colección documental; `operationally_reviewed_at` identifica la revisión posterior de comportamientos observados.
+El estado se refiere al alcance descrito en `summary` y `guidance`, consultables con `api describe`. Un alta validada no valida también la edición, la baja o todos los campos de la entidad. La fecha `reviewed_at` corresponde a la colección documental; `operationally_reviewed_at` identifica la consolidación posterior de evidencia de comportamientos observados. Ninguna de esas fechas acredita pruebas nuevas de todas las operaciones: el alcance sigue en `guidance`, la matriz y los subcasos del roadmap.
 
 Antes de configurar cuentas, conceptos, puntos de venta, centros o actividades, o de reclasificar compras, ventas, pagos y asientos, leer [capabilities-and-verification.md](capabilities-and-verification.md). Esa matriz distingue capacidades públicas, campos no persistidos, comprobaciones contables y acciones que requirieron la web. No se agregan rutas inferidas al catálogo.
 
@@ -107,7 +107,7 @@ Antes de configurar cuentas, conceptos, puntos de venta, centros o actividades, 
 - `cuentacorriente.list` es experimental porque Postman indica que no está implementada.
 - `mayor.list` se comprobó con JWTC, aunque Postman omite la autenticación explícita. Su estado es `limited`: puede devolver el ejercicio completo aunque se pidan fechas más estrechas. Comprobar el rango efectivo, cuenta y completitud; un error no equivale a ausencia de movimientos.
 - `centrocosto.create` devolvió `id: 0` sin alta comprobada; volver a listar antes de decidir un fallback o reintento.
-- `compra.save` permitió corregir cuenta e imputaciones y separar IIBB de distintas jurisdicciones con una agrupación exterior única y cuentas adicionales en los elementos internos. Varias agrupaciones exteriores produjeron una clasificación incorrecta y se bloquean en el CLI. El cambio de `codactividad` no persistió en el caso observado.
+- `compra.save` permitió corregir cuenta e imputaciones y separar IIBB de distintas jurisdicciones con una agrupación exterior única y cuentas adicionales en los elementos internos. Las aplicaciones reales autorizadas de varias jurisdicciones y dos cuentas conservaron el CAE existente; la separación contable entre cuentas no validó la distribución de categorías fiscales del Libro IVA. Ver los subcasos D05 del roadmap; la edición general sigue fuera de operativo. Varias agrupaciones exteriores produjeron una clasificación incorrecta y se bloquean en el CLI. El cambio de `codactividad` no persistió en el caso observado.
 - `puntoventa.update` permitió cambiar actividad; comparar además los campos no solicitados, como `ticket`.
 - `asiento.save` se comprobó para alta sin ID. La edición y baja requieren validación independiente.
 - `pago.save` permite registrar un pago, pero la cuenta de cabecera no garantiza la contrapartida de su asiento ni la aplicación a facturas.

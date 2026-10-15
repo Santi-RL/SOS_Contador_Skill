@@ -297,7 +297,7 @@ En un ensayo ficticio sin CAE se comprobó la edición de una factura A: una sol
 
 **Límite fiscal observado:** `libroiva.compras` conservó las bases, IVA y total, pero devolvió una sola categoría `creditofiscal` para el documento, correspondiente a la cuenta de cabecera en ese caso. No se comprobó una distribución fiscal entre gasto y activo ni el comportamiento de otras exportaciones. No presentar esta variante como solución fiscal completa, cambiar la cabecera para forzar una categoría ni modificar cuentas compartidas para compensarlo.
 
-El alcance es una edición con dos cuentas, misma alícuota, sin productos ni CAE. No valida otras alícuotas, notas, alta directa con dos cuentas, conceptos del maestro de productos ni conservación de CAE existente. Mantener validación controlada, body completo y aprobación propia para la aplicación real. Si el objetivo requiere repartir categorías fiscales, detener esa parte hasta validar el reporte correspondiente. No quitar el bloqueo de varias agrupaciones exteriores.
+El ensayo ficticio cubrió una edición con dos cuentas, misma alícuota y sin productos ni CAE. Una aplicación real autorizada posterior conservó el CAE preexistente, identidad, IVA, total y reparto contable; la distribución fiscal del Libro IVA continuó pendiente. Esa aplicación no valida otras alícuotas, notas, alta directa con dos cuentas, conceptos del maestro de productos ni emisión o reemplazo de CAE. Mantener validación controlada, body completo y aprobación propia para la aplicación real. Si el objetivo requiere repartir categorías fiscales, detener esa parte hasta validar el reporte correspondiente. No quitar el bloqueo de varias agrupaciones exteriores.
 
 ## Ventas
 

@@ -1,143 +1,57 @@
-# Cobro From Document
+# Cobranza desde documentos
 
-This guide is the human-oriented workflow for creating a receipt from a document without forcing the user to send a full JSON payload.
+Usar para preparar un recibo desde PDF, imagen, TXT, CSV, XLSX o XLS mediante lenguaje natural. El contrato de campos está en [cobro-create-and-associate.md](cobro-create-and-associate.md); la ruta habilitada y sus transportes están en [operating-recipes.md](operating-recipes.md#cobranzas). Este flujo no habilita ediciones ni bajas.
 
-It is not the default path for every SOS interaction. Use it only for document-driven receipt creation flows. Updates require a separately validated recipe in development.
+## Agrupar las fuentes
 
-## Goal
+Cada orden o recibo independiente requiere su propio borrador. Usar varios `--source` en un solo borrador únicamente para páginas, frente/dorso o anexos que completen el mismo documento.
 
-Use natural language plus one or more attached files, while keeping the validation explicit before any write.
+Separar los archivos si difieren la orden, fecha, facturas referidas, total o conjunto de cheques/retenciones. Si una vista previa fusiona órdenes independientes, detenerse y preparar los borradores separados antes de escribir.
 
-Target flow:
+## Preparar y revisar
 
-1. user asks to create a receipt from a PDF, image, TXT, CSV, XLSX, or XLS
-2. assistant groups the attached files by business receipt before drafting
-3. assistant runs one `cobro draft --preview-format markdown` per receipt group
-4. assistant asks only for real missing fields
-5. assistant shows the extracted result in Markdown tables
-6. user confirms
-7. assistant runs `cobro create --draft-id ... --confirm` for each approved draft
-8. if this document family needs a new extraction profile, stop that discovery path and request explicit development mode; operational mode only consumes existing profiles
+1. Resolver una CUIT de trabajo única por catálogo. La CUIT del cliente no sustituye la del contribuyente. Si el receptor del documento permite resolverla de forma inequívoca, no pedir de nuevo ese dato.
+2. Ejecutar un `cobro draft --preview-format markdown` por grupo documental; el borrador no registra un recibo en SOS.
+3. Leer el resultado y resolver únicamente faltantes o ambigüedades reales. No completar banco, cuenta, régimen o factura para hacer cuadrar el total.
+4. Mostrar la vista previa y obtener aprobación del resultado exacto.
+5. Ejecutar `cobro create --draft-id <id_borrador> --confirm` para cada borrador aprobado, uno por vez. Reutilizar el borrador almacenado, sin volver a extraer el documento.
+6. Verificar recibo, movimientos y asociaciones conforme a la receta. Si la creación terminó y la asociación falló, informar el estado parcial y detenerse: no repetir la creación; cualquier reparación requiere su propia propuesta.
 
-## When Multiple Files Arrive Together
+## Datos mínimos
 
-Do not assume that multiple files belong to the same receipt.
+| Parte | Datos a resolver |
+|---|---|
+| Contexto | CUIT de trabajo y contribuyente, distintos de la CUIT de la contraparte. |
+| Cabecera | Fecha y cliente identificado por ID, CUIT o nombre inequívoco. |
+| Movimiento simple | Cuenta de destino e importe. |
+| Cheque | Cuenta de destino, banco, fecha, número e importe. |
+| Retención | Cuenta de destino, fecha, régimen e importe. |
+| Asociación, si se pidió | Al menos una factura por ID o comprobante visible; contrastar fecha y total cuando estén disponibles. |
 
-Use multiple `--source` values in one draft only when the files are complementary pieces of one business document, for example:
+Comentarios, centro de costo y número de recibo son opcionales según el contrato. Un dato ausente no autoriza a inventarlo.
 
-- front/back scans of the same order
-- continuation pages of the same PDF export
-- annexes or supporting pages that complete the same receipt
+## Vista previa obligatoria
 
-Split the work into separate drafts when the files contain different:
+Mostrar tablas con:
 
-- order numbers
-- receipt dates
-- invoice references
-- totals
-- cheque or retention sets
+- **Contexto:** CUIT de trabajo, contribuyente, cliente y su CUIT, fecha, centro y comentarios.
+- **Movimientos:** tipo, cuenta de destino, banco o régimen, número, fecha, importe y estado de resolución.
+- **Asociaciones:** comprobante, fecha, total y estado de resolución.
+- **Totales:** suma del recibo, suma de las facturas a asociar y diferencia, indicando si el caso exige cuadre exacto.
 
-If a preview merges multiple independent orders into one receipt, stop and rerun the workflow with one draft per receipt group before any write.
+Detenerse si falta la fecha, el cliente o un campo obligatorio del movimiento; si varias cuentas, bancos o regímenes coinciden; si el total esperado difiere de los movimientos; o si no se cumple el cuadre exigido para las asociaciones. Pedir solo el dato necesario para resolver ese punto.
 
-## Minimum Data Needed
+Ejemplos de aclaración:
 
-Always explicit:
+- «Pude extraer el cheque, pero no resolví su banco de forma única. ¿Cuál es el banco exacto?»
+- «Pude extraer la retención, pero falta el régimen numérico que acepta SOS.»
 
-- `CUIT de trabajo`
+## Extracción y aprendizaje
 
-Receipt header:
+`cobro draft` consulta primero los perfiles privados existentes según [local-document-profiles.md](local-document-profiles.md), antes de recurrir al parser genérico. Operativo solo consume esos perfiles. Crear, editar o probar un perfil requiere desarrollo explícito; una extracción fallida no autoriza a diseñar reglas nuevas.
 
-- `Fecha`
-- `Cliente` by `idclipro`, `CUIT`, or name
+Los perfiles y formatos particulares permanecen en el hogar privado, fuera del repositorio público. Su ubicación no habilita ejecución ni publicación automática. Si hace falta OCR y no está disponible una extracción confiable, detenerse y resolver esa carencia sin inventar campos.
 
-Receipt movements:
+Después de un borrador normal, continuar con su revisión o aclaraciones. No inspeccionar código ni diseñar un camino alternativo durante la operación. Ante variante sin receta, aplicar la parada y transición de modo definidas en `SKILL.md`.
 
-- `simple`: `Cuenta destino`, `Monto`
-- `cheque`: `Cuenta destino`, `Banco`, `Fecha`, `Número`, `Monto`
-- `retencion`: `Cuenta destino`, `Fecha`, `Régimen`, `Monto`
-
-Association, only if requested:
-
-- at least one target invoice by visible `Comprobante` or `venta_id`
-
-Optional:
-
-- `Comentarios`
-- `Centro de costo`
-- `Número de recibo`
-- `Factura fecha`
-- `Factura total`
-
-## What The Assistant Must Show Before Writing
-
-### Context
-
-| Campo | Valor |
-| --- | --- |
-| CUIT de trabajo | ... |
-| Contribuyente | ... |
-| Cliente | ... |
-| CUIT cliente | ... |
-| Fecha | ... |
-| Centro de costo | ... |
-| Comentarios | ... |
-
-### Movimientos
-
-| Tipo | Cuenta destino | Banco/Régimen | Número | Fecha | Monto | Estado |
-| --- | --- | --- | --- | --- | --- | --- |
-| cheque | Valores a Depositar | GALICIA Y BS AS | 32412952 | 2025-10-28 | 1102000.66 | Inferido |
-
-### Asociación
-
-| Comprobante | Fecha | Total | Estado |
-| --- | --- | --- | --- |
-| A-0003-00000158 | 2025-08-12 | 6200000.00 | Inferido |
-
-### Totals
-
-- `Total recibo`: ...
-- `Total asociación`: ...
-- `Diferencia`: ...
-
-## Required Clarifications
-
-The assistant must stop and ask when any of these remains unresolved:
-
-- work CUIT missing or ambiguous
-- client unresolved
-- document date missing
-- a movement has missing required data
-- multiple banks/accounts/regimens match the same free text
-- receipt total and association total do not match when exact matching is expected
-
-## Standard Follow-Ups
-
-When the work CUIT is missing:
-
-`Necesito que me confirmes el CUIT de trabajo donde se va a cargar el recibo.`
-
-When the client is ambiguous:
-
-`Necesito que me confirmes el cliente del recibo. Puedo buscarlo por CUIT o por nombre exacto.`
-
-When a cheque bank is unresolved:
-
-`Pude extraer el cheque, pero no pude resolver el banco de forma unica. Decime el banco exacto para ese item.`
-
-When a retention regimen is unresolved:
-
-`Pude extraer la retencion, pero me falta el regimen numerico que acepta SOS para ese item.`
-
-## Operational Notes
-
-- `CUIT de trabajo` and `CUIT del cliente/proveedor` are never the same concept.
-- `cobro draft` is non-mutating.
-- `cobro create --draft-id ...` must reuse the cached draft and must not reparse the source.
-- Never annul, cancel, or give baja to an existing receipt as part of this workflow unless the user explicitly asked for that exact cancellation.
-- `cobro draft` checks private extraction profiles before the generic parser. The path is `<SOS_CONTADOR_HOME>/local/document_profiles/<cuit_trabajo>/<cuit_contraparte>/<document_kind>/...`.
-- Local profiles are intended for per-user optimizations and are ignored by git.
-- The public repository should keep only the generic parser; special document families belong in local profiles.
-- Multiple `--source` values mean "one receipt across several files", not "batch several independent receipts at once".
-- If OCR is required and unavailable locally, stop and ask for a text-readable source or OCR availability.
-- After `cobro draft`, the normal path is to validate or ask for missing fields, not to inspect repository code or CLI help.
+Las bajas y anulaciones de comprobantes están bloqueadas en todos los modos actuales, incluso ante un pedido de cancelación. Ese pedido requiere un desarrollo y una validación separados; la aprobación de este recibo no habilita ese trabajo.

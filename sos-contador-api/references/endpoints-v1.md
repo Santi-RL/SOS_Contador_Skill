@@ -341,24 +341,19 @@ python scripts/sos_contador_api.py --work-mode development call --auth-mode jwtc
 
 ## Mutation Guardrails
 
-For every `POST`, `PUT`, `DELETE`, or `PATCH`:
+Aplicar la política vigente de [safety-and-storage.md](safety-and-storage.md#lecturas-y-escrituras), que prevalece sobre los ejemplos históricos de este archivo.
 
-- resolve the work CUIT first and keep it explicit in the command or the draft
-- use `--dry-run` to inspect the business preview and the final request without executing it
-- use `--confirm` to execute it
-- avoid direct destructive operations unless the user explicitly confirmed them in the conversation
-- never treat a normal create/update confirmation as permission to annul a comprobante
-- the exact endpoint/body field that annuls a comprobante is not validated in this skill; do not invent it and do not probe it casually
-- when reading or verifying comprobantes, treat records with markers such as `cancelado=1`, non-empty `fechabaja`, or CSV/export placement under `ANULADOS` as annulled and exclude them from normal active-record results unless the user explicitly asked for annulled items
+- Resolver la CUIT y mantenerla explícita en el comando o borrador.
+- Distinguir efectos de método HTTP: `compra.search` y `venta.search` son POST de lectura; no exigen confirmación de escritura.
+- Para una mutación habilitada, preparar vista previa, obtener aprobación de ese resultado y ejecutar con `--confirm` en el modo correspondiente. Desarrollo solo no escribe.
+- Mantener el payload aprobado y verificar su persistencia. Ante timeout o respuesta ambigua, consultar el estado y detenerse; no reenviar ni cambiar de transporte para completar la operación.
+- Las lecturas ordinarias excluyen `cancelado=1`, `fechabaja` no vacía y secciones `ANULADOS`, salvo consulta expresa sobre anulados.
 
 ## Comprobante Anulacion Safety
 
-This skill must default to non-destructive comprobante handling.
+Las bajas y anulaciones de compras, ventas, cobros y pagos están bloqueadas en **todos los modos actuales**, incluso con una solicitud expresa o `--confirm`. Un pedido futuro de cancelación requiere desarrollar y validar un mecanismo propio; no autoriza a eludir el bloqueo actual.
 
-- Never annul purchases, sales, receipts, payments, or similar comprobantes unless the user explicitly asked for that exact cancellation.
-- `back/comprobante_altamodi.asp` is a mutating web-session endpoint used by create/update flows. Do not assume it is safe for arbitrary edits and never use it to explore cancellation behavior without explicit user authorization.
-- `PUT /compra/0`, `venta create`, `cobro create`, `pago create`, and raw `call` mutations are not allowed to carry guessed cancellation semantics.
-- If future work validates the exact cancellation payload, document that payload explicitly before using it in the skill.
+`back/comprobante_altamodi.asp` es una ruta de escritura usada por helpers concretos, no una interfaz segura para ediciones arbitrarias ni para descubrir campos de cancelación. No agregar semántica de baja a `compra/0`, `venta create`, `cobro create`, `pago create` o `call`. Tampoco anular comprobantes ficticios como limpieza de pruebas.
 
 ## Known Limits
 

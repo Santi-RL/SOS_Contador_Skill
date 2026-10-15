@@ -1,362 +1,78 @@
-# Mis Comprobantes AFIP
+# Mis Comprobantes ARCA/AFIP
 
-**Límite vigente:** en operativo usar solo `afip draft`. `afip import` reconstruye el borrador al confirmar y aún no garantiza congelación del lote; su escritura permanece suspendida incluso en validación controlada hasta completar D15. Se admite desarrollo con `--dry-run`. Revisar residuales tributarios y sentido emitidos/recibidos contra fuentes antes de probar. Seguir D15 de [development-roadmap.md](development-roadmap.md).
+## Alcance vigente
 
-This guide defines the analysis-first workflow for AFIP exports such as:
+En operativo usar únicamente `afip draft` para **Mis Comprobantes Recibidos**. El parser identifica también archivos de emitidos, pero el flujo de borrador actual los rechaza: no hay receta de análisis o importación de ventas por esta vía. No cambiar el título, la CUIT ni el sentido del archivo para forzar su aceptación.
 
-- `Mis Comprobantes Recibidos - CUIT <cuit_trabajo>`
-- `Mis Comprobantes Emitidos - CUIT <cuit_trabajo>`
-
-The goal is to normalize the spreadsheet, deduplicate against SOS safely, and build future-ready drafts without writing anything until the business defaults are explicit.
-
-## What Row 1 Means
-
-Always inspect row 1 before reading the data rows.
-
-- If row 1 contains `Comprobantes Recibidos`, treat the file as purchases.
-- If row 1 contains `Comprobantes Emitidos`, treat the file as sales.
-- Extract the `CUIT de trabajo` from the same row.
-- If the user also gave an explicit work CUIT and it conflicts with row 1, stop and ask.
-
-Example:
-
-- `Mis Comprobantes Recibidos - CUIT <cuit_trabajo>`
-  - operation kind: `compra`
-  - work CUIT: `<cuit_trabajo>`
-
-## Expected Header Row
-
-The second row should contain the AFIP columns, including at least:
-
-- `Fecha`
-- `Tipo`
-- `Punto de Venta`
-- `Numero Desde`
-- `Numero Hasta`
-- `Cod. Autorizacion`
-- `Nro. Doc. Emisor`
-- `Denominacion Emisor`
-- `Nro. Doc. Receptor`
-- `Tipo Cambio`
-- `Moneda`
-- the tax and total columns through `Imp. Total`
-
-If the header is materially different, stop and treat the file as a new format to map explicitly.
-
-## Row Validation
-
-Every row must pass these checks before dedupe or draft generation:
-
-1. `Numero Desde` and `Numero Hasta` must both exist.
-2. `Numero Desde` and `Numero Hasta` must be equal.
-3. `Fecha` must parse cleanly.
-4. `Tipo` must map to a known document rule.
-5. `Imp. Total` must parse cleanly.
-
-If `Numero Desde != Numero Hasta`, mark the row as `verificar` and never auto-create it.
-
-## Counterparty Side
-
-For `Comprobantes Recibidos`:
-
-- `Nro. Doc. Emisor` is the provider CUIT.
-- `Denominacion Emisor` is the provider name.
-- `Nro. Doc. Receptor` should match the work CUIT from row 1.
-
-For `Comprobantes Emitidos`:
-
-- invert the business meaning accordingly
-- the work CUIT is still row 1
-- the counterparty is the receptor side
-
-## Document Identity
-
-Normalize the visible identity from:
-
-- `Tipo`
-- `Punto de Venta`
-- `Numero Desde`
-
-Example:
-
-- `Tipo = 1 - Factura A`
-- `Punto de Venta = 5`
-- `Numero Desde = 157`
-
-Normalized identity:
-
-- visible: `A 00005-00000157`
-- machine-friendly: `A-0005-00000157`
-
-Do not use `Numero Hasta` for identity after the equality check; it is validation-only.
-
-## Observed Type Mapping
-
-These mappings were observed against real SOS purchase records for AFIP imports. Extend the table only after validating the new type against a real detail payload.
-
-| AFIP `Tipo` | `fcncnd` | `Letra` | `tipocomprobante` | Importe operativo en SOS | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `1 - Factura A` | `F` | `A` | `1` | `+1` | Standard invoice |
-| `81 - Tique Factura A` | `F` | `A` | `1` | `+1` | Observed to persist like `Factura A` in SOS |
-| `201 - Factura de Crédito Electrónica MiPyMEs (FCE) A` | `F` | `A` | `201` | `+1` | Distinct fiscal subtype; do not normalize it to Factura A `1/001` merely because the letter is A |
-| `11 - Factura C` | `F` | `C` | `11` | `+1` | No VAT buckets, usually non-taxed |
-| `3 - Nota de Credito A` | `C` | `A` | `3` | `+1` | Keep amounts positive in SOS purchases; the document nature stays identified by `fcncnd=C` and `tipocomprobante=3` |
-
-If the file contains an unknown type, mark the row as `verificar` and do not create it automatically.
-
-`Letra=A` and `fcncnd=F` do not distinguish `001` from `201`: the source type code and the original must do so. After loading or auditing a purchase, compare the original code, `compra.get.cabecera.tipocomprobante` and `libroiva.compras.codigocomprobanteafip`. Do not describe `201` as an internal SOS code. If the original and Libro IVA both indicate `001` but the detail returns `201`, preserve the document as a standard invoice for reporting, record the header discrepancy and follow [capabilities-and-verification.md](capabilities-and-verification.md); do not re-save the entire purchase solely to normalize a limited field.
-
-## Amount Normalization
-
-Preserve the AFIP tax buckets losslessly in the analysis draft:
-
-- `Neto Grav. IVA 0%`
-- `IVA 2,5%`
-- `Neto Grav. IVA 2,5%`
-- `IVA 5%`
-- `Neto Grav. IVA 5%`
-- `IVA 10,5%`
-- `Neto Grav. IVA 10,5%`
-- `IVA 21%`
-- `Neto Grav. IVA 21%`
-- `IVA 27%`
-- `Neto Grav. IVA 27%`
-- `Neto No Gravado`
-- `Op. Exentas`
-- `Otros Tributos`
-- `Total IVA`
-- `Imp. Total`
-
-For purchase workflows in this workspace, keep the amount fields positive before dedupe, preview, and create:
-
-- invoices and debit notes stay positive
-- credit notes also stay positive
-
-Represent the document nature with `fcncnd` / `tipocomprobante`, not by negating the total or tax buckets.
-
-## Safe Deduplication
-
-This step must be exhaustive. The skill must be sure the row is not already loaded before preparing it for mutation.
-
-Recommended source for purchase dedupe:
-
-- exact-range read through the authenticated web-session listing/export for `idtipo_operacion=4`
-- use the file's minimum and maximum `Fecha` as the search range
-- exclude annulled purchases from the active dedupe universe unless the user explicitly asked to inspect annulled records
-  - markers observed in this workspace: `cancelado=1`, non-empty `fechabaja`, or CSV/export placement under `ANULADOS`
-
-Why:
-
-- the public `compra/listado/:periodo` endpoint is useful for reads
-- but exact-range dedupe for a spreadsheet batch is safer when it uses the same internal listing/export that the SOS UI exposes for purchases
-
-Deduplication order:
-
-1. Match by `CAE` when the spreadsheet row has it and SOS also exposes it.
-2. If `CAE` is missing, use:
-   - counterparty CUIT
-   - `Fecha`
-   - `Letra`
-   - `Punto de Venta`
-   - `Numero Desde`
-   - total operativo en SOS
-   - `fcncnd`
-3. If more than one SOS record matches the fallback key, load `compra/detalle/:id` for those candidates and compare:
-   - `tipocomprobante`
-   - `fcncnd`
-   - `puntoventa`
-   - `numero`
-   - `cae`
-   - summarized tax buckets
-4. If the match is still ambiguous, mark the row as `verificar`.
-
-Origins like `MC Mis Comprobantes AutoImpo` are informative only. A row is a duplicate even if the existing SOS record came from another origin.
-
-## Draft Statuses
-
-Each normalized row should end in exactly one status:
-
-- `ya_cargado`
-- `pendiente`
-- `verificar`
-
-Suggested user-facing output tables:
-
-- already loaded
-- pending
-- verify
-
-## Counterparty Resolution
-
-Historical behavior below is not a validated supplier-role recipe. The basic `POST /cliente` body created a third party with client role; D06 must validate supplier role before promoting automatic supplier creation.
-
-Resolve the counterparty against SOS by CUIT first.
-
-For purchases:
-
-- look up the provider with `cliente/listado` using `proveedor=true`
-- use the CUIT as the primary identity
-- use the denomination only as a support field
-
-If the CUIT does not exist in SOS, keep the row as `pendiente` or `verificar` depending on the intended future mutation policy, but do not guess an `idclipro`.
-
-Validated API fallback for this workspace:
-
-- if the provider is missing, it can be created first through `POST /cliente`
-- the live API requires `cuit`, `clipro`, `idprovincia`, and `idtipocondicioniva`
-- for this file family, the practical default used in real imports was:
-  - `idtipocondicioniva = 1` for `Factura A` / `Tique Factura A`
-  - `idtipocondicioniva = 3` for `Factura C`
-
-## Accounting Defaults
-
-This file family still does not include a reliable semantic expense account, but the public API proved to accept purchase creates without `idcuenta` when the rest of the payload follows the documented `compra/0` shape.
-
-Current temporary policy for this workspace:
-
-1. omit `idcuenta` for AFIP purchase imports unless the user explicitly asks for account mapping
-2. keep `idcentrocosto = General` only when that default is confirmed for the work CUIT
-3. derive `idprovinciaiibb` from the resolved counterparty province when the mapping is unique
-4. keep account-mapping as a future optimization layer, not a blocker for import
-
-Observed side effect in real tests:
-
-- when `idcuenta` is omitted, SOS can assign a default account automatically
-- in the validated test for `<cuit_trabajo>`, the created purchase landed in `Ventas Generales`
-
-So the rule is:
-
-- omit `idcuenta` when speed is preferred
-- send `idcuenta` only when the user wants strict accounting classification from the start
-
-## Normalized Draft Shape
-
-The analysis draft should preserve enough data to create later without reparsing the spreadsheet.
-
-Suggested shape:
-
-```json
-{
-  "source_row": 3,
-  "operation_kind": "compra",
-  "status": "pendiente",
-  "work_cuit": "<cuit_trabajo>",
-  "counterparty": {
-    "idclipro": "58984230",
-    "cuit": "<cuit_emisor>",
-    "nombre": "Emisor Demo S.R.L."
-  },
-  "document": {
-    "fecha": "2026-02-01",
-    "fcncnd": "F",
-    "letra": "A",
-    "tipocomprobante": 1,
-    "puntoventa": 5,
-    "numero": 157,
-    "cae": "<cae>",
-    "moneda": "ARS",
-    "tipo_cambio": "1"
-  },
-  "amounts": {
-    "neto_21": "1136242.00",
-    "iva_21": "238610.82",
-    "otros_tributos": "0.00",
-    "total_operativo": "1374852.82"
-  },
-  "accounting_defaults": {
-    "idcuenta": null,
-    "idcentrocosto": null,
-    "idprovinciaiibb": 19
-  }
-}
-```
-
-The future create wrapper should reuse this normalized draft and must not reparse the original file.
-
-## Validated Purchase Create Shape
-
-For the current workspace, the following public API pattern is validated for purchases:
-
-- method: `PUT`
-- path: `compra/0`
-- auth: `jwtc`
-
-Minimal validated body pattern:
-
-```json
-{
-  "fecha": "2026-02-18",
-  "idclipro": 59650537,
-  "cuitclipro": "<cuit_proveedor>",
-  "fcncnd": "F",
-  "letra": "A",
-  "puntoventa": 4,
-  "numero": 1139,
-  "numerohasta": 1139,
-  "obtienecae": false,
-  "fechaiva": "2026-02-18",
-  "idprovinciaiibb": 19,
-  "idcentrocosto": <id_centro_costo>,
-  "memo": "CAE: <cae> - ",
-  "referencia": "",
-  "descuento": 0,
-  "uniqueid": "uuid-v4",
-  "controlainconsistencia": 0,
-  "imputaciones": [
-    {
-      "imputa": [
-        { "i": "neto", "a": 21.0, "v": 1200000.0 }
-      ]
-    }
-  ],
-  "productos": []
-}
-```
-
-Notes from real tests:
-
-- using the wrong legacy shape can fail with `TypeError: Cannot read properties of undefined (reading 'split')`
-- adding `idcuenta` is accepted, but it is not required for the create to succeed
-- when `idcuenta` is omitted, SOS may assign a default account automatically
-- `memo` persists
-- the structured `CAE` field did not persist in the validated tests even though the `memo` kept the CAE text
-
-## Mutation Boundary
-
-This guide is intentionally analysis-first.
-
-For this workflow:
-
-- parse
-- validate
-- dedupe
-- resolve counterparty
-- build drafts
-- show tables
-
-Never use this workflow to annul or replace a purchase. Comprobante deletions remain blocked in every current mode; future cancellation support requires a separate implementation and explicit validation.
-
-Before re-enabling any import, implement and validate frozen payloads, source identity, counterparty roles and deterministic residual classification under D15. The current CLI blocks live import in all modes.
-
-## Local CLI Workflow
-
-The workspace now includes a dedicated helper for this file family:
+La importación real está suspendida **en todos los modos**, incluida validación controlada. El código histórico de `afip import` reconstruye el lote al confirmar y normaliza residuales sin demostrar su naturaleza. El análisis sigue disponible; guardar un borrador local no congela todavía un lote ejecutable aprobado. El trabajo pendiente está en D15 del [roadmap](development-roadmap.md).
 
 ```powershell
-python scripts/sos_contador_api.py afip draft --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx"
-python scripts/sos_contador_api.py --work-mode development afip import --source "C:\ruta\Mis Comprobantes Recibidos - CUIT <cuit_trabajo>.xlsx" --dry-run
-# No ejecutar importación real hasta congelar y validar el lote aprobado (D15).
+python scripts/sos_contador_api.py afip draft --source <planilla_privada.xlsx>
+python scripts/sos_contador_api.py --work-mode development afip import --source <planilla_privada.xlsx> --dry-run
 ```
 
-Observed behavior of that helper in this workspace:
+No ejecutar una importación real ni invocar directamente las funciones Python para eludir el bloqueo. Para documentos individuales con receta disponible, usar [compra-from-pdf-folder.md](compra-from-pdf-folder.md); esto no convierte la planilla en un lote autorizado.
 
-- row 1 drives both operation kind and work CUIT
-- `afip draft` saves a reusable draft under `<SOS_CONTADOR_HOME>/.draft_cache/`
-- `afip import` rebuilds the draft, blocks on `--confirm`, and only creates rows that still remain `pendiente`
-- if the spreadsheet total does not match the visible bucket sum, the helper normalizes the residual into:
-  - `nogravado` for `Factura C`
-  - `percepcionotra` for purchase invoices and tickets
+## Reconocer archivo, CUIT y columnas
 
+1. Inspeccionar la primera fila. `Comprobantes Recibidos` corresponde a compras; `Comprobantes Emitidos`, a ventas. La CUIT de trabajo proviene de esa misma fila y se resuelve contra el catálogo accesible. Si contradice una CUIT explícita del usuario, detenerse y aclarar el destino.
+2. La segunda fila contiene las columnas: fecha, tipo, punto de venta, números desde/hasta, autorización, documentos y denominaciones de emisor/receptor, moneda, tipo de cambio, bases, IVA, tributos y total. Si el formato cambió materialmente, tratarlo como un formato pendiente de desarrollo; no reconstruir otro parser durante la operación.
+3. En recibidos, el emisor es el proveedor y el receptor debe corresponder a la CUIT de trabajo. Conservar ambas identidades separadas.
+4. Validar fecha, tipo, importes y numeración. `Número Desde` y `Número Hasta` deben existir y ser iguales; un rango, una fecha inválida o un tipo desconocido deja la fila en `verificar`.
 
+## Tipos fiscales y límites del mapeo actual
 
+| Tipo del archivo | Interpretación y soporte actual |
+|---|---|
+| `1 - Factura A` | El parser usa `F`, letra `A`, `tipocomprobante=1`. Contrastar original, detalle y Libro IVA. |
+| `81 - Tique Factura A` | El mapeo histórico usa también `F/A/1`; eso **no demuestra** que la importación conserve `081`. La configuración del proveedor y el código efectivo del libro requieren su propia validación. |
+| `201 - Factura de Crédito Electrónica MiPyMEs (FCE) A` | Es un subtipo distinto de `001`. No está implementado en `afip_type_rule`; debe permanecer para verificar, sin sustituirlo por Factura A. |
+| `11 - Factura C` | El parser usa `F/C/11`. Revisar los importes no gravados/exentos contra la fuente; no inventar IVA ni decidir su clasificación por diferencia. |
+| `3 - Nota de Crédito A` | El parser usa `C/A/3`. En compras SOS conserva magnitudes positivas y expresa la naturaleza con el tipo; no transformar una nota en factura ni negar los importes indiscriminadamente. |
 
+La letra y `fcncnd` no distinguen todos los subtipos. Conservar el código de origen y comparar `compra.get.cabecera.tipocomprobante` con `libroiva.compras.codigocomprobanteafip`. Si original y libro indican `001` y la cabecera devuelve `201`, registrar la discrepancia según [capabilities-and-verification.md](capabilities-and-verification.md); no regrabar la compra solo para normalizar un campo limitado.
+
+## Importes y residuales
+
+Conservar el desglose del archivo: bases e IVA de 0 %, 2,5 %, 5 %, 10,5 %, 21 % y 27 % cuando existan, no gravado, exento, otros tributos, IVA total, total, moneda y tipo de cambio. Los valores no soportados deben quedar visibles para revisión, sin fusionarlos con otra alícuota. El parser actual detecta bases o IVA al 2,5 % y 5 % y agrega un error de variante no admitida; no prometer su importación porque esas columnas existan.
+
+El código histórico normaliza diferencias entre total y suma de partidas como `nogravado` en Factura C y `percepcionotra` en otras compras. Esa normalización es una limitación del análisis, **no evidencia de un impuesto**. Contrastar residuales con el original y no aceptar el importe clasificado automáticamente, crear una percepción ni alterar una base para hacer cerrar la fila. No confundir una diferencia subcentavo del cálculo de SOS con un tributo documentado.
+
+## Deduplicación y cobertura
+
+El borrador actual combina consulta API de compras, detalles y un índice HTTP directo de estado activo. HTTP no es obligatorio por ser intrínsecamente más seguro: es la implementación actual. La auditoría de lecturas ya comprobó consultas API por rango; completar su recorrido corresponde a D05.1 antes de sustituir consumidores.
+
+La consulta API usada por el análisis aún no recorre todas las posiciones. Si alcanza el límite observado de 50 filas, no demuestra que la deduplicación del lote sea exhaustiva. Una ausencia en ese conjunto no prueba que falte la compra. Conservar la advertencia de cobertura en el resultado; no presentar las filas `pendiente` como un lote listo para registrar. Consultar [api-read-audit.md](api-read-audit.md) y las recetas vigentes sin diseñar una ruta alternativa en operativo.
+
+Comparar la identidad fiscal —CUIT del proveedor, tipo o naturaleza, letra, PV y número— además de fecha y partidas. El CAE puede aportar una coincidencia cuando ambas fuentes lo exponen, pero su ausencia no justifica duplicar un documento. Ante identidad coincidente con importes distintos, abrir el detalle y mantener `verificar`; nunca tratarlo como compra nueva. El origen de importación informado por SOS no determina si es un duplicado.
+
+Excluir de los activos `cancelado=1`, `fechabaja` no vacía y secciones `ANULADOS`, salvo consulta expresa sobre anulados. Bajas y reemplazos de comprobantes permanecen bloqueados.
+
+## Proveedor y clasificación contable
+
+Buscar el tercero por CUIT; la denominación es un dato de apoyo. Si falta o es ambiguo, conservar el faltante sin adivinar `idclipro`. El alta API básica comprobada creó un tercero con rol cliente: no presentarla como una receta de alta de proveedor ni repetir el alta para obtener ese rol. D06 debe validar rol y preservación de ficha antes de habilitar altas automáticas en este flujo.
+
+La planilla no demuestra la naturaleza y el destino de cada gasto. Resolver cuenta, centro y jurisdicción con el original y las instrucciones vigentes de la empresa. Una provincia del proveedor no demuestra la jurisdicción de todas las percepciones. Si la clasificación no está definida, mantenerla pendiente.
+
+La API aceptó históricamente compras sin `idcuenta` y SOS asignó una cuenta predeterminada, incluso una de ventas en un caso. Eso demuestra aceptación técnica, no una imputación correcta. No recomendar omitir la cuenta por velocidad ni adoptar una cuenta o un centro sin aprobación. Cualquier futura variante que delegue valores al sistema debe mostrar ese efecto en el preview y verificar su resultado.
+
+## Borrador y presentación al usuario
+
+El análisis clasifica las filas como `ya_cargado`, `pendiente` o `verificar`. Esos estados deben acompañarse de sus límites: cobertura, diferencias de identidad/importes, proveedor, subtipo y clasificación sin resolver. Ningún estado habilita la importación real suspendida.
+
+Conservar fuente y fila, CUIT y sentido, contraparte, fecha e identidad, código fiscal original, CAE informado, moneda, partidas, clasificación propuesta y motivos de revisión. Guardar el borrador y la evidencia en el hogar privado. Mostrar tablas con faltantes concretos; una planilla de análisis no sustituye los comprobantes originales ni acredita su archivo.
+
+Para estructuras de escritura consultar [public-api-payloads.md](public-api-payloads.md#compras). No mantener otro ejemplo de body de importación ni reutilizar un detalle de SOS sin transformar. El body de una compra individual comprobada no valida la reconstrucción de un lote.
+
+## Condiciones para rehabilitar la importación
+
+D15 debe resolver conjuntamente:
+
+- lote congelado con fuente, CUIT, bodies, `uniqueid`, proveedores y efectos adicionales identificados;
+- rechazo de cambios entre vista previa y confirmación, sin reconstrucción silenciosa del lote;
+- deduplicación completa y repetida antes de cada escritura, con tratamiento de estados parciales y respuestas ambiguas;
+- rol proveedor, cuentas y valores predeterminados aceptados expresamente;
+- subtipos y alícuotas por variante, incluida la diferencia entre `001`, `081` y `201`;
+- residuales resueltos contra fuentes, sin inventar tributos, y verificación posterior de identidad, estado, asiento y Libro IVA.
+
+Validar primero con datos ficticios y alcance de escritura propio. Emitidos requiere un desarrollo separado. Resolver solo la paginación o disponer de un dry-run correcto no rehabilita la importación.
