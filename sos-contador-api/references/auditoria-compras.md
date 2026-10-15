@@ -20,10 +20,10 @@ Una compra puede tener importes correctos y una cuenta incorrecta, o estar bien 
 1. Resolver el contribuyente y leer sus [instrucciones privadas vigentes](taxpayer-instructions.md).
 2. Delimitar período, documentos incluidos, carpeta durable elegida por el usuario y alcance de las correcciones autorizadas.
 3. Guardar lecturas previas privadas:
-   - `compra.search` para el rango exacto;
+   - `compra list-range` para el rango exacto, con todas sus posiciones;
    - `libroiva.compras` para el mes;
    - compras anuladas por separado cuando formen parte del control.
-4. Si `compra.search` devuelve 50 filas, subdividir el rango antes de concluir que el período está completo.
+4. Comprobar que el recorrido terminó sin inconsistencias ni límites. `compra list-range` no entrega cobertura parcial como completa; `api invoke --operation compra.search` consulta una sola posición. Contrastar identidades y conteo con el libro u otra lectura independiente cuando el cierre lo requiera.
 5. Inventariar los archivos sin moverlos todavía. Distinguir facturas, notas, tiques, transferencias, resúmenes, presupuestos y vistas repetidas del mismo comprobante.
 
 Usar como clave primaria de conciliación:

@@ -40,9 +40,9 @@ El código histórico normaliza diferencias entre total y suma de partidas como 
 
 ## Deduplicación y cobertura
 
-El borrador actual combina consulta API de compras, detalles y un índice HTTP directo de estado activo. HTTP no es obligatorio por ser intrínsecamente más seguro: es la implementación actual. La auditoría de lecturas ya comprobó consultas API por rango; completar su recorrido corresponde a D05.1 antes de sustituir consumidores.
+El borrador actual combina consulta API de compras, detalles y un índice HTTP directo de estado activo. HTTP no es obligatorio por ser intrínsecamente más seguro: es la implementación actual. D05.1 incorpora ahora el mismo recorrido paginado a este análisis; el índice HTTP de estado sigue siendo la comprobación complementaria existente.
 
-La consulta API usada por el análisis aún no recorre todas las posiciones. Si alcanza el límite observado de 50 filas, no demuestra que la deduplicación del lote sea exhaustiva. Una ausencia en ese conjunto no prueba que falte la compra. Conservar la advertencia de cobertura en el resultado; no presentar las filas `pendiente` como un lote listo para registrar. Consultar [api-read-audit.md](api-read-audit.md) y las recetas vigentes sin diseñar una ruta alternativa en operativo.
+La consulta API usada por el análisis recorre posiciones hasta una página vacía y valida fechas, IDs y límites. Si una página falla o el recorrido queda incompleto, el análisis se detiene sin producir un borrador basado en una cobertura parcial. Esa mejora no resuelve los demás límites de D15: no presentar filas `pendiente` como un lote listo para registrar. Consultar [api-read-audit.md](api-read-audit.md) y las recetas vigentes sin diseñar una ruta alternativa en operativo.
 
 Comparar la identidad fiscal —CUIT del proveedor, tipo o naturaleza, letra, PV y número— además de fecha y partidas. El CAE puede aportar una coincidencia cuando ambas fuentes lo exponen, pero su ausencia no justifica duplicar un documento. Ante identidad coincidente con importes distintos, abrir el detalle y mantener `verificar`; nunca tratarlo como compra nueva. El origen de importación informado por SOS no determina si es un duplicado.
 

@@ -6592,17 +6592,93 @@ def fetch_all_clientes_catalog(bound_client: SOSContadorClient) -> dict[str, dic
     return results
 
 
-def fetch_compra_consulta_items(bound_client: SOSContadorClient, *, desde: str, hasta: str) -> list[dict[str, Any]]:
-    payload = bound_client.request(
-        "POST",
-        "compra/consulta",
-        query=[("pagina", "1"), ("registros", "500")],
-        body={"fecha_desde": desde, "fecha_hasta": hasta},
+def validate_compra_query_limits(
+    desde: str, hasta: str, batch_size: int, max_pages: int,
+) -> tuple[datetime.date, datetime.date]:
+    try:
+        if not all(isinstance(value, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value)
+                   for value in (desde, hasta)):
+            raise ValueError
+        start, end = datetime.date.fromisoformat(desde), datetime.date.fromisoformat(hasta)
+    except ValueError as exc:
+        raise CLIError("Las fechas de compras deben ser válidas y usar YYYY-MM-DD.") from exc
+    if start > end:
+        raise CLIError("La fecha desde de compras no puede ser posterior a hasta.")
+    if type(batch_size) is not int or not 1 <= batch_size <= 50:
+        raise CLIError("El tamaño de página de compras debe estar entre 1 y 50.")
+    if type(max_pages) is not int or not 1 <= max_pages <= 100:
+        raise CLIError("El límite de páginas de compras debe estar entre 1 y 100.")
+    return start, end
+
+
+def fetch_compra_consulta_items(
+    bound_client: SOSContadorClient, *, desde: str, hasta: str,
+    batch_size: int = 50, max_pages: int = 100,
+) -> list[dict[str, Any]]:
+    """Read 1-based offsets through an empty page; never return partial coverage."""
+    start, end = validate_compra_query_limits(desde, hasta, batch_size, max_pages)
+    rows: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    position = 1
+    for _ in range(max_pages):
+        payload = bound_client.request(
+            "POST", "compra/consulta",
+            query=[("pagina", str(position)), ("registros", str(batch_size))],
+            body={"fecha_desde": desde, "fecha_hasta": hasta},
+        )
+
+        def incomplete(reason: str) -> CLIError:
+            return CLIError(
+                f"Cobertura de compras incompleta en posición {position}: {reason}. "
+                "No usar el resultado parcial para deduplicar ni registrar."
+            )
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise incomplete("respuesta sin una lista items válida")
+        items = payload["items"]
+        if len(items) > batch_size:
+            raise incomplete("el servidor no respetó el tamaño solicitado")
+        if not items:
+            return rows
+        for item in items:
+            if not isinstance(item, dict):
+                raise incomplete("fila inválida")
+            raw_id = str(item.get("id") or "")
+            if not re.fullmatch(r"[1-9][0-9]*", raw_id):
+                raise incomplete("fila sin ID válido")
+            if raw_id in seen_ids:
+                raise incomplete("ID o página repetidos; el conjunto pudo cambiar durante la consulta")
+            fecha = parse_iso_datetime(item.get("fecha"))
+            if fecha is None or not start <= fecha.date() <= end:
+                raise incomplete("fila sin fecha válida o fuera del período solicitado")
+            seen_ids.add(raw_id)
+            rows.append(item)
+        # Advance by received rows even if SOS caps the requested page size.
+        # A short page is checked again rather than interpreted as proof of completion.
+        position += len(items)
+    raise CLIError(
+        f"Cobertura de compras incompleta: se alcanzó el límite de {max_pages} consultas "
+        "sin una página vacía. No usar el resultado parcial para deduplicar ni registrar."
     )
-    items = payload.get("items", [])
-    if not isinstance(items, list):
-        return []
-    return [item for item in items if isinstance(item, dict)]
+
+
+def command_compra_list_range(args: argparse.Namespace, client: SOSContadorClient) -> Any:
+    validate_compra_query_limits(args.desde, args.hasta, args.registros, args.max_pages)
+    bound_client, work_target = bind_business_client(client, args, required=True)
+    rows = fetch_compra_consulta_items(
+        bound_client, desde=args.desde, hasta=args.hasta,
+        batch_size=args.registros, max_pages=args.max_pages,
+    )
+    active = [row for row in rows if compra_row_is_active(row)]
+    items = rows if args.incluir_inactivos else active
+    return {
+        "contexto": work_target,
+        "desde": args.desde, "hasta": args.hasta,
+        "items": items,
+        "count": len(items),
+        "excluded_inactive": len(rows) - len(items),
+        "pagination_finished": True,
+    }
 
 
 def list_web_comprobantes_range_all(
@@ -7574,34 +7650,8 @@ def fetch_compra_items_complete(
     desde: str,
     hasta: str,
 ) -> tuple[list[dict[str, Any]], bool]:
-    items = fetch_compra_consulta_items(bound_client, desde=desde, hasta=hasta)
-    if len(items) < 50:
-        return items, False
-    start = datetime.date.fromisoformat(desde)
-    end = datetime.date.fromisoformat(hasta)
-    if start >= end:
-        return items, True
-    midpoint = start + datetime.timedelta(days=(end - start).days // 2)
-    left, left_truncated = fetch_compra_items_complete(
-        bound_client,
-        desde=start.isoformat(),
-        hasta=midpoint.isoformat(),
-    )
-    right, right_truncated = fetch_compra_items_complete(
-        bound_client,
-        desde=(midpoint + datetime.timedelta(days=1)).isoformat(),
-        hasta=end.isoformat(),
-    )
-    merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in [*left, *right]:
-        item_id = str(item.get("id") or "")
-        key = item_id or json.dumps(make_json_safe(item), ensure_ascii=False, sort_keys=True)
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(item)
-    return merged, left_truncated or right_truncated
+    # Preserve the existing consumers' tuple contract; incomplete reads now raise.
+    return fetch_compra_consulta_items(bound_client, desde=desde, hasta=hasta), False
 
 
 def compra_row_provider_cuit(row: dict[str, Any]) -> str:
@@ -7688,7 +7738,7 @@ def find_compra_duplicate(
             "summary": summary,
         }
     if truncated:
-        return {"kind": "truncated", "reason": "La consulta del día alcanzó el límite de 50 compras."}
+        return {"kind": "truncated", "reason": "La consulta de compras no completó su recorrido."}
     return None
 
 
@@ -8143,18 +8193,24 @@ def verify_created_compra(
     ):
         issues.append("Los importes o tratamientos impositivos persistidos no coinciden con el borrador.")
 
-    rows, truncated = fetch_compra_items_complete(
-        bound_client,
-        desde=str(fields.get("fecha") or ""),
-        hasta=str(fields.get("fecha") or ""),
-    )
+    try:
+        rows, truncated = fetch_compra_items_complete(
+            bound_client,
+            desde=str(fields.get("fecha") or ""),
+            hasta=str(fields.get("fecha") or ""),
+        )
+    except (CLIError, APIError) as exc:
+        raise CLIError(
+            f"La compra {compra_id} fue creada, pero no se pudo verificar la cobertura del listado. "
+            "Consulte su estado y no repita la creación. " + str(exc)
+        ) from exc
     listed = next((item for item in rows if str(item.get("id") or "") == str(compra_id)), None)
     if listed is None:
         issues.append("La compra no aparece en la consulta del período esperado.")
     elif not compra_row_is_active(listed):
         issues.append("La compra aparece eliminada, archivada o anulada.")
     if truncated and listed is None:
-        issues.append("La consulta del día quedó truncada en 50 registros.")
+        issues.append("La consulta de compras no completó su recorrido.")
     if issues:
         raise CLIError(
             f"La compra {compra_id} fue creada, pero la verificación posterior falló: " + "; ".join(issues)
@@ -8386,7 +8442,7 @@ def ensure_work_mode_allowed(args: argparse.Namespace) -> None:
         "api": {"catalog", "describe", "invoke"},
         "cliente": {"list", "get", "create"},
         "producto": {"list", "create"},
-        "compra": {"draft", "create"},
+        "compra": {"list-range", "draft", "create"},
         "cobro": {"list", "get", "list-range", "resolve-id", "draft", "create", "asociar"},
         "pago": {"list", "get", "create"},
         "venta": {"list", "list-all", "get", "search", "pdf", "create"},
@@ -8550,6 +8606,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     compra = subparsers.add_parser("compra")
     compra_sub = compra.add_subparsers(dest="compra_command", required=True)
+
+    compra_list_range = compra_sub.add_parser("list-range")
+    add_work_cuit_arguments(compra_list_range)
+    compra_list_range.add_argument("--desde", required=True)
+    compra_list_range.add_argument("--hasta", required=True)
+    compra_list_range.add_argument("--registros", type=int, default=50)
+    compra_list_range.add_argument("--max-pages", type=int, default=100)
+    compra_list_range.add_argument("--incluir-inactivos", action="store_true")
+    compra_list_range.set_defaults(handler=command_compra_list_range)
 
     compra_draft = compra_sub.add_parser("draft")
     add_compra_draft_arguments(compra_draft)

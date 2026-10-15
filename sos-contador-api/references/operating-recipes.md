@@ -10,7 +10,7 @@ Leer solo la sección de la tarea. Los comandos se ejecutan desde la raíz de la
 | Alta básica de cliente o producto | `cliente create`, `producto create` | API; body publicado completo, IDs resueltos y campos básicos. El rol proveedor y la configuración contable del producto no están cubiertos. |
 | Ventas: consultar y descargar | `venta search`, `venta get`, `venta pdf` | API. PDF HTTP alternativo solo con permiso y `--allow-web-session-fallback`. |
 | Ventas: registrar sin CAE | `venta create` con campos y productos del helper | HTTP directo histórico, no navegador. Solo la variante básica documentada; no actualizar ni solicitar CAE por defecto. |
-| Compras: consultar | `api invoke` con `compra.search/get/list`, `libroiva.compras`, `asiento.get` | API. Libro, asiento y original comprueban aspectos distintos. |
+| Compras: consultar | `compra list-range`; detalle con `api invoke --operation compra.get`, `libroiva.compras`, `asiento.get` | API. El helper recorre las posiciones hasta una página vacía, comprueba fechas/IDs y detiene resultados incompletos. Libro, asiento y original comprueban aspectos distintos. |
 | Compras documentales: registrar | `compra draft/create` | Alta por API; verificación activa complementaria por HTTP directo incorporado. |
 | Cobranzas: consultar período relativo | `cobro list/get --id` | API; detalle HTTP alternativo solo autorizado y con flag. |
 | Cobranzas: rango exacto o número visible | `cobro list-range/resolve-id`, `cobro get` sin ID | HTTP directo validado. La API publicada solo define períodos relativos; no inventar filtros. |
@@ -43,6 +43,14 @@ Mostrar CUIT, cliente, comprobante, fecha, conceptos, neto/IVA/total y **sin sol
 
 ## Compras
 
+**Consultar un rango.** Usar el helper de lectura completo, con fechas ISO y CUIT explícita:
+
+```powershell
+python scripts/sos_contador_api.py compra list-range --cuit-trabajo <cuit> --desde <YYYY-MM-DD> --hasta <YYYY-MM-DD>
+```
+
+Por defecto devuelve los registros activos según sus indicadores; usar `--incluir-inactivos` solo cuando se pidan también anulados o archivados. `--registros` admite de 1 a 50 y `--max-pages`, de 1 a 100; el límite incluye la consulta vacía final. `pagination_finished=true` indica que terminó ese recorrido, no una instantánea transaccional. Si falla una página, se repite un ID o hay filas fuera del rango, no se entrega un listado parcial como completo. Informar el límite; no cambiar de transporte ni ampliar consultas a ciegas. Para un cierre crítico o datos cambiantes, contrastar identidades con una fuente independiente del mismo alcance. `api invoke --operation compra.search` conserva su función de consulta de una sola posición.
+
 **Preparar.** Leer [compra-from-pdf-folder.md](compra-from-pdf-folder.md). Cada documento independiente produce una compra. Resolver comprador, CUIT válida del proveedor, fecha y fiscalidad desde el original; resolver alícuotas, descuentos, cuentas y centro con instrucciones vigentes y antecedentes comparables.
 
 ```powershell
@@ -59,7 +67,7 @@ python scripts/sos_contador_api.py compra create --draft-id <id_borrador> --cuit
 
 El helper reutiliza payload y `uniqueid` congelados y repite la deduplicación. Si el borrador cambió o caducó, volver a presentarlo. Las fechas son ISO; las notas de crédito de compra conservan importes positivos y su tipo fiscal.
 
-**Verificar.** Detalle, período, estado activo, proveedor, identidad, todas las bases/alícuotas, percepciones y total a centavos. Si `compra.search` devuelve 50 filas, subdividir el rango; no declarar cobertura completa sin resolver la truncación. Contrastar código fiscal efectivo con el Libro IVA y original; no normalizar `081`, `001` o `201` por analogía. Para controles contables consultar asiento/mayor. Las [limitaciones comprobadas](capabilities-and-verification.md) no autorizan una corrección fuera de esta receta. Auditoría de una carpeta: [auditoria-compras.md](auditoria-compras.md).
+**Verificar.** Detalle, período, estado activo, proveedor, identidad, todas las bases/alícuotas, percepciones y total a centavos. El recorrido compartido pagina también cuando hay más de 50 compras el mismo día. Una respuesta inválida, repetida, fuera del rango o que agote el límite detiene la operación; no interpretar ese fallo como ausencia de duplicados. Contrastar código fiscal efectivo con el Libro IVA y original; no normalizar `081`, `001` o `201` por analogía. Para controles contables consultar asiento/mayor. Las [limitaciones comprobadas](capabilities-and-verification.md) no autorizan una corrección fuera de esta receta. Auditoría de una carpeta: [auditoria-compras.md](auditoria-compras.md).
 
 **Corregir una compra existente.** No forma parte de la receta operativa de alta. La evidencia consolidada distingue las variantes D05.3–D05.5 del [roadmap](development-roadmap.md#d05-compras-por-variante), incluidas aplicaciones reales que conservaron el CAE; esto no habilita edición general en operativo. En desarrollo o validación controlada, usar `compra.save` con el ID existente y el body completo transformado según [public-api-payloads.md](public-api-payloads.md#compras). Para varias jurisdicciones IIBB, conservar una sola agrupación exterior y ubicar cada cuenta adicional en el `cuid` del elemento interno; el CLI bloquea la forma de varias agrupaciones que produjo una clasificación silenciosamente incorrecta. Antes de escribir, guardar las lecturas del original, detalle, asiento, búsqueda y Libro IVA; ejecutar `--dry-run` y obtener aprobación específica. Después, repetir esas lecturas y comparar identidad, CAE existente, estado activo, cuentas, centro, bases, IVA, percepciones por jurisdicción, total, balance y presencia única. No repetir la mutación ante una discrepancia.
 

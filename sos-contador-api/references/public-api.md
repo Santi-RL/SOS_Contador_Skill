@@ -65,7 +65,7 @@ Usar `--param clave=valor` para reemplazar segmentos como `:id`, `:periodo` o `:
 
 Usar `--query clave=valor` solo para claves admitidas por la operación. El CLI rechaza parámetros desconocidos.
 
-En `compra.search`, `pagina` y `registros` se admiten por evidencia de lectura aunque no figuren en su ejemplo Postman. En las compras contrastadas, `pagina` es posición inicial desde 1; no tratarla como número de página ni extrapolar ese comportamiento a otros módulos. El recorrido automático de los helpers conserva su implementación anterior hasta completar D05.
+En `compra.search`, `pagina` y `registros` se admiten por evidencia de lectura aunque no figuren en su ejemplo Postman. En las compras contrastadas, `pagina` es posición inicial desde 1; no tratarla como número de página ni extrapolar ese comportamiento a otros módulos. `compra list-range` y los consumidores documentales recorren las posiciones, avanzando por la cantidad recibida, hasta una página vacía. Usan como máximo 50 filas por consulta y 100 consultas por recorrido; ante inconsistencia o límite, fallan sin devolver cobertura parcial. `api invoke --operation compra.search` sigue consultando una sola posición. Ver las [recetas](operating-recipes.md#compras).
 
 Usar `--body-json` o `--body-file`, nunca ambos. Consultar [public-api-payloads.md](public-api-payloads.md) para las estructuras documentadas.
 

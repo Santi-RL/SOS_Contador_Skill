@@ -141,7 +141,7 @@ Si la clasificación explícita elegida es `otros`, el helper la codifica como `
 
 ## Deduplicación
 
-Consultar `POST /compra/consulta` con fechas ISO y abrir detalles con `GET /compra/detalle/:id` cuando haga falta. Si una consulta devuelve 50 filas, tratarla como potencialmente truncada y subdividir el período.
+Los helpers recorren `POST /compra/consulta` por posiciones iniciales desde 1, con fechas ISO, hasta una página vacía. Para consultar el rango desde el CLI usar `compra list-range`; abrir detalles con `GET /compra/detalle/:id` cuando haga falta. No subdividir por fechas para superar 50 compras de un mismo día. Ante fallo, repetición, respuesta inválida, fecha ajena al rango o límite alcanzado, detener la operación sin deducir que falta el documento.
 
 Clave de identidad:
 
